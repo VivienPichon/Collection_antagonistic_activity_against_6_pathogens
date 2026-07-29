@@ -1,0 +1,426 @@
+---
+title: "Nb1_Data_validation_&_aggregation"
+author: "Vivien Pichon"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+
+library(tidyverse)   # Data manipulation
+library(reshape2)    # Data reshaping
+library(knitr)       # Get good tables
+library(kableExtra)  # Get good tables
+
+
+knitr::opts_chunk$set(message = FALSE, 
+                      warning = FALSE,
+                      fig.align = 'center' )
+
+
+## Create reporting function
+describe_table <- function(df, name = deparse(substitute(df)), head = TRUE) {
+  cat(sprintf("The table '%s' contains %d rows and %d columns\n", name, nrow(df), ncol(df)))
+  if(head == TRUE){
+    head(df) |>
+      kable() |>
+      kable_styling()
+  }
+}
+
+# Simple rounded percentage function
+turn_pct <- function(frac, total){
+  round( 100*frac/total, 0)
+}
+
+SAVEPATH <- "../R_reports/"
+GETPATH <- "../Get_numbers_article"
+
+```
+
+# 1_Import tables
+
+## 1.1 Non-filamentous
+
+```{r}
+## Import data sheets
+# scores
+tbl_score_nf <- read.csv( "data/0_nonfilamentous_database_cleaned.csv")
+
+# strain characeristics
+tbl_info <- read.csv( "data/0_strain_metadata.csv" )
+
+## Filter and transform variables
+tbl_score_nf <- tbl_score_nf |>
+  mutate(patho_factor = factor(patho_factor,
+                               levels = c("Dsol", "Pcar", "Asol",
+                                          "Rsol", "Pinf", "Pult" ))
+  )
+
+## Keep key numbers
+l_nonfil_collection_description <- list(
+    ## Total number of non-filamentous
+  total_nb_strains = n_distinct(tbl_score_nf$strain),
+  ## Number of screened non-filamentous
+  screened_strains_list = unique(tbl_score_nf$strain)
+)
+
+
+## Summarize table
+describe_table(tbl_score_nf)
+
+```
+
+
+## 1.2 Filamentous
+
+
+```{r ETL}
+
+## Import data sheets
+# scores
+tbl_score_fil <- read.csv( "data/0_actino_score_database_cleaned.csv")
+
+## Filter and transform variables
+tbl_score_fil <- tbl_score_fil |> mutate(
+  ## Turn pathogen to factor
+  patho_factor = factor(patho_factor, 
+                        levels = c("Dsol", "Pcar", "Asol",
+                                   "Rsol", "Pinf", "Pult" ))
+  )
+
+## Summarize
+describe_table(tbl_score_fil)
+
+
+```
+
+
+Import list of filamentous strains
+
+```{r}
+
+## Import actino list
+tbl_actino_count <- read.csv( "data/0_fil_list_cleaned.csv") |> 
+  ## Select useful columns
+  select(strain, ORDER, GENUS, not_screened) |> 
+  ## Replace NAs with 0s
+  replace_na(list(not_screened = 0))
+
+```
+
+Place key numbers filamentous collection into a list
+
+```{r}
+l_filamentous_collection_description <- list(
+  ## Total number of filamentous
+  total_nb_strains = nrow(tbl_actino_count),
+  ## Number of screened filamentous
+  screened_strains_list = tbl_actino_count |> filter(not_screened == 0) |> pull(strain),
+  ## number of failed 
+  failed_strains_list = tbl_actino_count |> filter(not_screened == 1) |> pull(strain)
+)
+
+```
+
+# 2_Non-filamentous data wrangling
+In this section we clean up the data by removing invalid rows, and aggregate it to end up with the table that we will use: A table categorizing the activity of each strain against each pathogen based on the median of the valid replicates.
+
+## Validation
+
+In this section, we: 
+
+- remove the invalid replicates (score = 9, no sign of growth)
+- remove the strains that are poorly suited for our protocol (strains with less than 10 valid replicates across all tests)
+- remove the duels combination that are not reliable (only 1 valid replicate).
+- remove the duels which have 2 replicates and a score difference between replicates > 1.
+
+```{r replicate_growth_validation_nf}
+
+### List useful columns
+cols_to_keep <- c("strain", "patho_factor", 
+                  "Phylum", "Class", "Order", "Family", "Genus", 
+                  "Medium", "Cultivar","compartment")
+
+## Remove invalid results
+tbl_valid_nf = tbl_score_nf |>
+  ## Return validation (0 is invalid, 1 is valid)
+  mutate( validity = case_when(
+    inhibition_score == 9 ~ 0,
+    ctrl_growth == 0 & growth_score == 0 & inhibition_score == 0 ~ 0,
+    is.na(ctrl_growth) & growth_score == 0 ~ 0,
+    .default = 1)
+    ) |>
+  ## Remove invalid entries
+  filter(validity == 1) |>
+  ## select useful columnns
+  select( c("inhibition_score",cols_to_keep) )
+
+```
+
+After cleaning, the table has the following properties.
+
+```{r clean_strains_nf}
+## Detect unsuited strains (<10 replicates)
+list_bad_strains <- tbl_valid_nf |> 
+  count(strain) |>
+  filter(n < 10) |>
+  pull(strain) |>
+  unique()
+
+## Remove unsuited strains
+tbl_valid_nf <- tbl_valid_nf |>
+  filter(!(strain %in% list_bad_strains))
+
+## Report
+cat(length(list_bad_strains), "strains were unsuited for our method.\n" )
+
+## Detect unreliable combinations (less than 2 replicates)
+list_bad_comb_nf <- tbl_valid_nf |> 
+  count(strain, patho_factor) |>
+  filter(n < 2) |>
+  select(strain, patho_factor)
+
+## Remove unsuited duels
+tbl_valid_nf <- tbl_valid_nf |>
+  anti_join(list_bad_comb_nf, by = c("strain", "patho_factor"))
+
+## List duels with 2 replicates
+list_2_duels_nf <- tbl_valid_nf |> 
+  count(strain, patho_factor) |>
+  filter(n==2) |> 
+  select(-n)
+
+## Find the duels for which the two replicates have a score difference >1
+tbl_high_diff <- tbl_valid_nf |>
+  inner_join(list_2_duels_nf, by = c("strain", "patho_factor")) |> 
+  summarise(score_diff = first(inhibition_score)-last(inhibition_score),
+            .by = c(strain, patho_factor)) |> 
+  filter(score_diff > 1)
+
+## Remove these duels
+tbl_valid_nf <- tbl_valid_nf |>
+  anti_join(tbl_high_diff, by = c("strain", "patho_factor"))
+
+## Report
+cat( nrow(list_bad_comb_nf) + nrow(tbl_high_diff), "duels were removed.\n" )
+
+## Report
+describe_table(tbl_valid_nf)
+
+
+# Report data validation numbers
+l_nonfil_data_validation <- list(
+  ## Number of strains with low number of replicates
+  nb_invalid_less_than_10 = list_bad_strains |> length(),
+  ## Number of duels with a single replicate
+  nb_duel_with_one_replicate = list_bad_comb_nf |> nrow(),
+  ## Add number of screened strains
+  nb_strains_screened = tbl_valid_nf$strain |> n_distinct(), 
+  ## Number of genera that the screened strains belong to
+  nb_strains_genera = tbl_valid_nf$Genus |> n_distinct(),
+  ## Total number of possible duels
+  #nb_possible_duels = l_filamentous_collection_description$filamentous_total * 6,
+  ## Actual number of duels
+  nb_actual_duels = tbl_valid_nf |> count(strain, patho_factor) |> nrow()#,
+  ## Percentage of successfully assessed duels
+  # pct_duels_assessed = turn_pct(
+  #   l_nonfil_data_validation$nb_actual_duels, l_nonfil_data_validation$nb_possible_duels)
+  )
+
+
+```
+
+
+## Aggregation
+
+In this section we aggregate the data to deduce the activity level per strain per pathogen.
+Firstly, the pathogen-specific scores are transformed to match the general scoring system (if they don't), then the scores are **scaled** to fit between 0 and 1. 
+Then we categorize the activity level based to the **median** and the replicates:
+
+- Median < 0.25 is **Inactive**.
+- 0.25 <= Median < 0.5 has **Low** activity.
+- 0.5 <= Median < 0.75 has **Medium** activity.
+- 0.75 <= Median < 1 has **High** activity.
+- Median == 1 has **Outstanding** activity.
+
+
+```{r aggregation_nf}
+
+tbl_agg_nf <- tbl_valid_nf |>
+  ## Aggregate mean and median
+  summarize(median = median(inhibition_score),
+            .by = cols_to_keep
+  ) |>
+  ## Categorize median activity
+  mutate( median_categ = case_when(
+    median < 1 ~ "Inactive",
+    median < 2 ~ "Low",
+    median < 3 ~ "Medium",
+    median < 4 ~ "High",
+    median == 4 ~ "Outstanding",
+    .default = "error") |>
+      factor(levels = c("Outstanding", "High", "Medium", 
+                        "Low", "Inactive", "Absent"))
+  )
+
+## Report
+describe_table(tbl_agg_nf)
+
+```
+
+
+```{r save_nonfil_aggregated_data, eval=FALSE}
+
+write.csv(tbl_agg_nf, "data/1_data_aggregated_non_filamentous",
+          row.names = FALSE)
+
+```
+
+# 3_Filamentous Data Wrangling
+
+In this section we do the same as previously, but with the filamentous strains.
+
+## Validation
+
+In the following section, we: 
+
+- remove the invalid replicates (score = 9)
+- remove the strains that are poorly suited for our protocol (strains with less than 10 valid replicates across all tests)
+- remove the strain/pathogen combination that are not reliable (only 1 valid replicate).
+- remove the duels which have 2 replicates and a score difference between replicates > 1.
+
+```{r replicate_validation_fil}
+
+## Remove invalid replicates (score =9)
+tbl_valid_fil = tbl_score_fil |>
+  filter( score != 9,
+          !is.na(score)) |> 
+  select(score, cols_to_keep)
+
+## Remove strains with very low number of replicates (< 10 across all tests)
+### Detect unsuited strains
+list_bad_strains_fil <- tbl_valid_fil |> 
+  count(strain) |>
+  filter(n < 10) |>
+  pull(strain) |>
+  unique()
+
+## Remove unsuited strains from dataset
+tbl_valid_fil <- tbl_valid_fil |>
+  filter(!(strain %in% list_bad_strains_fil))
+
+## Report
+cat( length(list_bad_strains_fil), "strains were unsuited for our method.\n" )
+
+# Duels with a single replicate
+## Detect
+list_bad_comb_fil <- tbl_valid_fil |> 
+  count(strain, patho_factor) |>
+  filter(n < 2) |>
+  select(strain, patho_factor)
+
+## Remove these duels
+tbl_valid_fil <- tbl_valid_fil |>
+  anti_join(list_bad_comb_fil, by = c("strain", "patho_factor"))
+
+# Duels with 2 replicates and a score difference >1 between them
+## List duels with 2 replicates
+list_2_duels_fil <- tbl_valid_fil |> 
+  count(strain, patho_factor) |>
+  filter(n==2) |> 
+  select(-n)
+
+## Find high difference duels 
+tbl_high_diff_fil <- tbl_valid_fil |>
+  inner_join(list_2_duels_fil, by = c("strain", "patho_factor")) |> 
+  summarise(score_diff = first(score)-last(score),
+            .by = c(strain, patho_factor)) |> 
+  filter(score_diff > 1)
+
+## Remove these duels
+tbl_valid_fil <- tbl_valid_fil |>
+  anti_join(tbl_high_diff_fil, by = c("strain", "patho_factor"))
+
+## Report
+cat( nrow(list_bad_comb_fil) + nrow(tbl_high_diff_fil), "combinations were removed.\n" )
+
+
+# Report data validation numbers
+l_filamentous_data_validation <- list(
+  ## Number of strains with low number of replicates
+  nb_invalid_less_than_10 = list_bad_strains_fil |> length(),
+  ## Number of duels with a single replicate
+  nb_duel_with_one_replicate = list_bad_comb_fil |> nrow(),
+  ## Add number of screened strains
+  nb_strains_screened = tbl_valid_fil$strain |> n_distinct(), 
+  ## Number of genera that the screened strains belong to
+  nb_strains_genera = tbl_valid_fil$Genus |> n_distinct(),
+  ## Total number of possible duels
+  nb_possible_duels = l_filamentous_collection_description$filamentous_total * 6,
+  ## Actual number of duels
+  nb_actual_duels = tbl_valid_fil |> count(strain, patho_factor) |> nrow(),
+  ## Percentage of successfully assessed duels
+  pct_duels_assessed = turn_pct(
+    (tbl_valid_fil |> count(strain, patho_factor) |> nrow()), 
+    (l_filamentous_collection_description$filamentous_total * 6))
+  )
+
+
+```
+
+## Aggregation
+
+In this section we aggregate the data to deduce the activity level per strain per pathogen.
+Firstly, the scores are **scaled** to fit between 0 and 1. 
+Then we categorize the activity level based to the **median** and the replicates:
+
+- Median < 0.25 is **Inactive**.
+- 0.25 <= Median < 0.5 has **Low** activity.
+- 0.5 <= Median < 0.75 has **Medium** activity.
+- 0.75 <= Median < 1 has **High** activity.
+- Median == 1 has **Outstanding** activity.
+
+After analysis, the data looks as such.
+
+```{r aggregation_fil}
+## Aggregation
+tbl_agg_fil <- tbl_valid_fil |>
+  ## Aggregate median
+  summarize(median = median(score),
+            .by = cols_to_keep
+            ) |>
+      ## Categorize median activity
+    mutate( median_categ = case_when(
+      median < 1 ~ "Inactive",
+      median < 2 ~ "Low",
+      median < 3 ~ "Medium",
+      median < 4 ~ "High",
+      median == 4 ~ "Outstanding",
+      .default = "error") |>
+        factor(levels = c("Outstanding", "High", "Medium", 
+                          "Low", "Inactive", "Absent"))
+      )
+
+## Report
+describe_table(tbl_agg_fil)
+
+```
+
+```{r save_fil_aggregated_data, eval=FALSE}
+
+write.csv(tbl_agg_fil, "data/1_data_aggregated_filamentous",
+          row.names = FALSE)
+
+```
+
+## End
+
+```{r get_SessionInfo}
+
+sessionInfo()
+
+``` 
+

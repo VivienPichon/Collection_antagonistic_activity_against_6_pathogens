@@ -1,0 +1,11 @@
+# All the html-related files
+*.html
+*.png
+.Rhistory
+.RData
+MathJax.js
+data/Alisson_list_07.25.xlsx
+data/Numbers_to_get.xlsx
+import_latest_data.R
+data/original_collection_table.xlsx
+data/99_*
