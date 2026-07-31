@@ -1,0 +1,659 @@
+---
+title: "Nb2_Figures_isolation_parameters_&_pathogen_sensitivity"
+author: "Vivien Pichon"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+
+library(tidyverse)   # Data manipulation
+library(reshape2)    # Data reshaping
+library(knitr)       # Get good tables
+library(kableExtra)  # Get good tables
+library(RColorBrewer)# Color palette
+library(patchwork)   # Pasting plots together
+library(ggtext)      # Allows the use of the markdown text format in ggplots
+
+
+knitr::opts_chunk$set(message = FALSE, 
+                      warning = FALSE,
+                      fig.align = 'center' )
+
+
+## Create reporting function
+describe_table <- function(df, name = deparse(substitute(df)), head = TRUE) {
+  cat(sprintf("The table '%s' contains %d rows and %d columns\n", name, nrow(df), ncol(df)))
+  if(head == TRUE){
+    head(df) |>
+      kable() |>
+      kable_styling()
+  }
+}
+
+# Simple rounded percentage function
+turn_pct <- function(frac, total){
+  round( 100*frac/total, 0)
+}
+
+```
+
+
+# 1_Import data
+
+```{r import_aggregated_tables}
+
+## Import aggregated scores for non-filamentous strains
+tbl_agg_nf <- read.csv("data/1_data_aggregated_non_filamentous") |> 
+  ## Turn isolation factors and score category to factor
+  mutate(Medium = factor(Medium,
+                         levels = c("ARE", "TSA", "ActIA", "PDA")),
+         compartment = factor(compartment,
+                              levels = c("Leaf", "Root", "Rhizosphere soil")),
+         Cultivar = factor(Cultivar,
+                           levels = c("Bintje", "Innovator")),
+         median_categ = factor(median_categ, 
+                               levels = c("Outstanding", "High", "Medium", 
+                                          "Low", "Inactive")),
+         patho_factor = factor(patho_factor,
+                               levels = c("Dsol", "Pcar", "Asol", "Rsol",
+                                          "Pinf", "Pult"))
+         )
+
+## Import aggregated scores for non-filamentous strains
+tbl_agg_fil <- read.csv("data/1_data_aggregated_filamentous") |> 
+  ## Turn isolation factors and score category to factor
+  mutate(Medium = factor(Medium,
+                         levels = c("ARE", "TSA", "ActIA", "PDA")),
+         compartment = factor(compartment,
+                              levels = c("Leaf", "Root", "Rhizosphere soil")),
+         Cultivar = factor(Cultivar,
+                           levels = c("Bintje", "Innovator")),
+         median_categ = factor(median_categ, 
+                               levels = c("Outstanding", "High", "Medium", 
+                                          "Low", "Inactive")),
+         patho_factor = factor(patho_factor,
+                               levels = c("Dsol", "Pcar", "Asol", "Rsol",
+                                          "Pinf", "Pult"))
+         )
+
+## Merge filamentous and non-filamentous tables
+tbl_agg_all <- tbl_agg_nf |> 
+  mutate(type = "Non-Filamentous") |> 
+  bind_rows( tbl_agg_fil |> mutate(type = "Filamentous")) |> 
+  mutate(type = factor(type,
+                       levels = c("Non-Filamentous", "Filamentous")))
+
+```
+
+# 2_Influence of isolation characteristics on maximum activity
+
+We explore the influence the isolation factors on the strain activity.
+For this, we will check if the distribution of the maximum activity level is influenced by any isolation factor: 
+
+- **Growth medium** of isolation, 
+- **cultivar** of origin,
+- **compartment** of origin.
+
+Firstly we create a table of maximum activity for each strain type.
+
+The table looks like this:
+
+```{r create_full_table}
+
+## List factors to summarize by
+summarize_by <- c("strain", "Medium", "Cultivar", "compartment")
+
+## Create list with the 2 tables: filamentous, non-filamentous
+l_max_activity <- list(tbl_fil = tbl_agg_fil |>
+                         arrange(desc(median)) |> 
+                         summarise(max_act = first(median_categ),
+                                   .by = summarize_by),
+                       tbl_nf = tbl_agg_nf |>
+                         arrange(desc(median)) |> 
+                         summarise(max_act = first(median_categ),
+                                   .by = summarize_by))
+
+## report
+describe_table(l_max_activity$tbl_nf)
+
+```
+
+### *Figure 2*
+
+We will represent the proportion of active strains for each factor, separately for the filamentous and non-filamentous strains.
+We want the total number of strains below each bar.
+Each subfigure will be for a different factor and will include the plots for the filamentous and non-filamentous strains.
+
+Firstly we create the labels that contain the number of isolated from each value of each factor,
+
+```{r, figure2_supporting_information}
+## Attache list
+attach(l_max_activity)
+
+## Get the number of strains per value of each factor
+list_strain_per_factor <- list(
+  cultivar_nf = table(tbl_nf$Cultivar),
+  cultivar_fil = table(tbl_fil$Cultivar),
+  compartment_nf = table(tbl_nf$compartment),
+  compartment_fil = table(tbl_fil$compartment),
+  medium_nf = table(tbl_nf$Medium),
+  medium_fil = table(tbl_fil$Medium)
+)
+
+## Attach list
+attach(list_strain_per_factor)
+
+## Arrange the numbers calculated above as small data frames that are usable by ggplot for labelling. 
+list_factor_labels <- list(
+  cultivar_nf = data.frame(
+    Cultivar = names(cultivar_nf),
+    label = as.character(cultivar_nf)
+    ),
+  cultivar_fil = data.frame(
+    Cultivar = names(cultivar_fil),
+    label = as.character(cultivar_fil)
+    ),
+  compartment_nf = data.frame(
+    compartment = names(compartment_nf),
+    label = as.character(compartment_nf)
+    ),
+  compartment_fil = data.frame(
+    compartment = names(compartment_fil),
+    label = as.character(compartment_fil)
+  ),
+  medium_nf = data.frame(
+    medium = names(medium_nf),
+    label = as.character(medium_nf)
+  ),
+  medium_fil = data.frame(
+    medium = names(medium_fil),
+    label = as.character(medium_fil)
+  )
+)
+
+detach(list_strain_per_factor)
+detach(l_max_activity)
+
+```
+
+
+Then we create the figure 2 by firstly plotting each subfigure, then arranging them together.
+
+```{r figure_2_create}
+
+attach(l_max_activity)
+attach(list_factor_labels)
+
+
+## Cultivar
+# Plot 1: cultivar for non-filamentous
+p1 <- ggplot(tbl_nf, aes(x = Cultivar, fill = max_act)) +
+  geom_bar(position = "fill") +
+  geom_richtext(
+    data = cultivar_nf,
+    aes(x = Cultivar, y = 1, label = paste("n =", label)),
+    size = 2.5, 
+    inherit.aes = FALSE, vjust = 0, fill = NA, label.color = NA,
+    label.padding = unit(c(2, 0, 2, 0), "pt")
+  ) +
+  scale_fill_manual(values = c( brewer.pal(11, "RdGy")[2:5], "grey95")) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "", 
+       y = "Non-Filamentous",
+       fill = "Activity level",
+       tag = "a") +
+  theme_classic()+
+  theme(
+    axis.title.x = element_markdown(),
+    panel.grid.major.x = element_blank(),
+    axis.text.y = element_text(),
+    axis.text.x = element_blank(),
+    legend.title = element_text(),
+    legend.title.position = "top") +
+  coord_cartesian(clip = "off")
+
+# Plot 2: cultivar for filamentous
+p2 <- ggplot(tbl_fil, aes(x = Cultivar, fill = max_act)) +
+  geom_bar(position = "fill") +
+  geom_richtext(
+    data = cultivar_fil,
+    aes(x = Cultivar, y = 1, label = paste("n =", label)),
+    size = 2.5, 
+    inherit.aes = FALSE, vjust = 0, fill = NA, label.color = NA,
+    label.padding = unit(c(2, 0, 2, 0), "pt")
+  ) +
+  scale_fill_manual(values = c( brewer.pal(11, "RdGy")[2:5], "grey95")) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "", 
+       y = "Filamentous",
+       fill = "Activity level") +
+  theme_classic()+
+  theme(
+    axis.title.x = element_markdown(),
+    panel.grid.major.x = element_blank(),
+    axis.text.y = element_text(),
+    axis.text.x = element_markdown(angle = 45, hjust = 1, vjust = 1),
+    legend.title = element_text(),
+    legend.title.position = "top") +
+  coord_cartesian(clip = "off")
+
+# Plot 3: compartment for non-filamentous
+p3 <- ggplot(tbl_nf, aes(x = compartment, fill = max_act)) +
+  geom_bar(position = "fill") +
+  geom_richtext(
+    data = compartment_nf,
+    aes(x = compartment, y = 1, label = paste("n =", label)),
+    size = 2.5, 
+    inherit.aes = FALSE, vjust = 0, fill = NA, label.color = NA,
+    label.padding = unit(c(2, 0, 2, 0), "pt")
+  ) +
+  scale_fill_manual(values = c( brewer.pal(11, "RdGy")[2:5], "grey95")) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "", 
+       y = "",
+       fill = "Activity level",
+       tag = "b") +
+  theme_classic()+
+  theme(
+    axis.title.x = element_markdown(),
+    panel.grid.major.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.text.x = element_blank(),
+    legend.title = element_text(),
+    legend.title.position = "top") +
+  coord_cartesian(clip = "off")
+
+# Plot 4: compartment for filamentous
+p4 <- ggplot(tbl_fil, aes(x = compartment, fill = max_act)) +
+  geom_bar(position = "fill") +
+  geom_richtext(
+    data = compartment_fil,
+    aes(x = compartment, y = 1, label = paste("n =", label)),
+    size = 2.5, 
+    inherit.aes = FALSE, vjust = 0, fill = NA, label.color = NA,
+    label.padding = unit(c(2, 0, 2, 0), "pt")
+  ) +
+  scale_fill_manual(values = c( brewer.pal(11, "RdGy")[2:5], "grey95")) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "", 
+       y = "",
+       fill = "Activity level") +
+  theme_classic()+
+  theme(
+    axis.title.x = element_markdown(),
+    panel.grid.major.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.text.x = element_markdown(angle = 45, hjust = 1, vjust = 1),
+    legend.title = element_text(),
+    legend.title.position = "top") +
+  coord_cartesian(clip = "off")
+
+# Plot 5: medium for non-filamentous
+p5 <- ggplot(tbl_nf, aes(x = Medium, fill = max_act)) +
+  geom_bar(position = "fill") +
+  geom_richtext(
+    data = medium_nf,
+    aes(x = medium, y = 1, label = paste("n =", label)),
+    size = 2.3, 
+    inherit.aes = FALSE, vjust = 0, fill = NA, label.color = NA,
+    label.padding = unit(c(2, 0, 2, 0), "pt")
+  ) +
+  scale_fill_manual(values = c( brewer.pal(11, "RdGy")[2:5], "grey95")) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "", 
+       y = "",
+       fill = "Activity level",
+       tag = "c") +
+  theme_classic()+
+  theme(
+    axis.title.x = element_markdown(),
+    panel.grid.major.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.text.x = element_blank(),
+    legend.title = element_text(),
+    legend.title.position = "top") +
+  coord_cartesian(clip = "off")
+
+# Plot 6: medium for filamentous
+p6 <- ggplot(tbl_fil, aes(x = Medium, fill = max_act)) +
+  geom_bar(position = "fill") +
+  geom_richtext(
+    data = medium_fil,
+    aes(x = medium, y = 1, label = paste("n =", label)),
+    size = 2.3, 
+    inherit.aes = FALSE, vjust = 0, fill = NA, label.color = NA,
+    label.padding = unit(c(2, 0, 2, 0), "pt")
+  ) +
+  scale_fill_manual(values = c( brewer.pal(11, "RdGy")[2:5], "grey95")) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "", 
+       y = "",
+       fill = "Activity level") +
+  theme_classic()+
+  theme(
+    axis.title.x = element_markdown(),
+    panel.grid.major.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.text.x = element_markdown(angle = 45, hjust = 1, vjust = 1),
+    legend.title = element_text(),
+    legend.title.position = "top") +
+  coord_cartesian(clip = "off")
+
+
+figure_2 <- (p1|p3|p5)/(p2|p4|p6) + 
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "right")
+
+## Clean up
+detach(l_max_activity)
+detach(list_factor_labels)
+
+rm(p1, p2, p3, p4, p5, p6)
+
+figure_2
+
+```
+
+```{r, save_figure_2, eval = FALSE}
+# ggsave("../Figures/Figure_2.pdf", 
+#        figure_2,
+#        height = 14,
+#        width = 21,
+#        units = "cm")
+
+ggsave("../Figures/Figure_2.png", 
+       figure_2,
+       height = 14,
+       width = 21,
+       units = "cm")
+
+```
+
+
+# 3_*Figure S2*
+
+Here, we create plots showing the influence of the isolation factor on the distribution of the activity, but this time for each pathogen separately.
+
+```{r figure_S2_a}
+## Set factor
+fact <- "Cultivar"
+
+figure_S2a <- ggplot(tbl_agg_all, aes(x = .data[[fact]], fill = median_categ )) +
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c( brewer.pal(11, "RdGy")[2:5], "grey95")) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "", 
+       y = "",
+       fill = "Activity level",
+       tag = "a") +
+  facet_grid(type ~ patho_factor) +
+  theme_classic()+
+  theme(
+    strip.background = element_blank(),
+    axis.text.x = element_markdown(angle = 45, hjust = 1, vjust = 1),
+    legend.title = element_text(),
+    legend.title.position = "top") +
+  coord_cartesian(clip = "off")
+
+figure_S2a
+
+```
+
+```{r figure_S2_b}
+## Set factor
+fact <- "compartment"
+
+figure_S2b <- ggplot(tbl_agg_all, aes(x = .data[[fact]], fill = median_categ )) +
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c( brewer.pal(11, "RdGy")[2:5], "grey95")) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "", 
+       y = "",
+       fill = "Activity level",
+       tag = "b") +
+  facet_grid(type ~ patho_factor) +
+  theme_classic()+
+  theme(
+    strip.background = element_blank(),
+    axis.text.x = element_markdown(angle = 45, hjust = 1, vjust = 1),
+    legend.title = element_text(),
+    legend.title.position = "top") +
+  coord_cartesian(clip = "off")
+
+figure_S2b
+
+```
+
+
+```{r figure_S2_c}
+## Set factor
+fact <- "Medium"
+
+figure_S2c <- ggplot(tbl_agg_all, aes(x = .data[[fact]], fill = median_categ )) +
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c( brewer.pal(11, "RdGy")[2:5], "grey95")) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "", 
+       y = "",
+       fill = "Activity level",
+       tag = "c") +
+  facet_grid(type ~ patho_factor) +
+  theme_classic()+
+  theme(
+    strip.background = element_blank(),
+    axis.text.x = element_markdown(angle = 45, hjust = 1, vjust = 1),
+    legend.title = element_text(),
+    legend.title.position = "top") +
+  coord_cartesian(clip = "off")
+
+figure_S2c
+
+```
+
+Assemble Figure S2
+
+```{r assemble_figure_S2, fig.width=8 , fig.height=12}
+
+figure_S2 <- (figure_S2a/figure_S2b/figure_S2c) + 
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "right")
+
+figure_S2
+
+```
+
+```{r save_figure_S2, eval = FALSE}
+
+## Save as pdf
+ggsave("Figures/Supp_Figure_S2.pdf",
+       figure_S2,
+       height = 25,
+       width = 17,
+       units = "cm")
+
+## Save as png
+ggsave("Figures/Supp_Figure_S2.png",
+       figure_S2,
+       height = 25,
+       width = 17,
+       units = "cm")
+
+
+```
+
+
+# *Figure 3*
+
+```{r, plot_figure, 3}
+
+## Plot for non-filamentous strains
+p1 <- ggplot(arrange(tbl_agg_nf, median_categ), 
+             aes(x = patho_factor, y = 1, 
+                 fill = median_categ)) +
+  geom_bar(stat = "identity", position = "fill") +
+  scale_fill_manual( values = c( brewer.pal(11, "RdGy")[2:5], "grey95")) +
+  labs(tag = "a",
+       x = "", y = "", 
+       fill = "Activity") +
+  theme_classic() +
+  theme(
+    axis.title.x = element_markdown(),
+    panel.grid.major.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.text.x = element_markdown(angle = 45, hjust = 1, vjust = 1),
+    legend.title = element_text(),
+    legend.title.position = "top") +
+  coord_cartesian(clip = "off")
+
+## Plot for filamentous strains
+p2 <-  ggplot(arrange(tbl_agg_fil, median_categ), 
+       aes(x = patho_factor, y = 1, 
+                    fill = median_categ)) +
+  geom_bar(stat = "identity", position = "fill") +
+  scale_fill_manual( values = c( brewer.pal(11, "RdGy")[2:5], "grey95")) +
+  labs(tag = "b",
+       x = "", y = "", 
+       fill = "Activity") +
+  theme_classic() +
+  theme(
+    axis.title.x = element_markdown(),
+    panel.grid.major.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.text.x = element_markdown(angle = 45, hjust = 1, vjust = 1),
+    legend.title = element_text(),
+    legend.title.position = "top") +
+  coord_cartesian(clip = "off")
+
+figure_3 <- (p1|p2) + 
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "right")
+
+rm(p1, p2)
+
+figure_3
+
+```
+
+```{r, save_figure_3, include = FALSE}
+
+ggsave("Figures/Figure_3.pdf",
+       figure_3,
+       height = 9,
+       width = 18,
+       units = "cm")
+
+ggsave("Figures/Figure_3.png",
+       figure_3,
+       height = 9,
+       width = 18,
+       units = "cm")
+
+```
+
+# *Figure S3*
+
+```{r function_figure_S3}
+
+func_s3_subfigure <- function(pathogen, tag) {
+  
+  ## Create vector of activity color
+  activity_colors <- c(
+    "Outstanding" = brewer.pal(11, "RdGy")[2],
+    "High" = brewer.pal(11, "RdGy")[3],
+    "Medium" = brewer.pal(11, "RdGy")[4],
+    "Low" = brewer.pal(11, "RdGy")[5],
+    "Inactive" = "grey90"
+  )
+  
+  ## Create temporary table
+  tbl_tmp <- tbl_agg_all |> filter(patho_factor == pathogen) |> arrange(median_categ)
+  
+  ## Create a data frame with the bar labels
+  n_labels <- tbl_tmp %>%
+    summarise(strain_nb = n_distinct(strain), .by = c(Phylum, Order))
+  
+  ## Create value plot
+  fig <- ggplot(tbl_tmp, 
+                aes(x = Order, y = 1, 
+                    fill = median_categ)) +
+    geom_bar(stat = "identity", position = "fill") +
+    geom_text(data = n_labels,
+              aes(x = Order, y = 1, label = paste0("n = ", strain_nb)),
+              inherit.aes = FALSE,
+              vjust = -0.5, size = 2) +
+    scale_fill_manual( values = activity_colors) +
+    labs(tag = tag,
+         x = "", y = pathogen, 
+         fill = "Activity") +
+    facet_grid(. ~ Phylum, scales = "free_x", space = "free_x") +
+    theme_classic() +
+    theme(
+      axis.title.x = element_markdown(),
+      panel.grid.major.x = element_blank(),
+      axis.text.y = element_blank(),
+      axis.text.x = element_markdown(angle = 45, hjust = 1, vjust = 1, size = 4),
+      legend.title = element_text(),
+      legend.title.position = "top",
+      legend.position = "none",
+      strip.background = element_blank(),
+      strip.text = element_text(margin = margin(b = 10), size = 6),
+      panel.spacing = unit(0.15, "lines")) +
+    coord_cartesian(clip = "off")
+  
+  return(fig)
+}
+
+  
+```
+
+
+```{r create_figure_S3, fig.height=12, fig.width=8}
+
+s3a <- func_s3_subfigure("Dsol", "a")
+s3b <- func_s3_subfigure("Pcar", "b")
+s3c <- func_s3_subfigure("Asol", "c")
+s3d <- func_s3_subfigure("Rsol", "d")
+s3e <- func_s3_subfigure("Pinf", "e") + theme(legend.position = "right")
+s3f <- func_s3_subfigure("Pult", "f")
+
+
+figure_S3 <- (s3a/s3b/s3c/s3d/s3e/s3f) + 
+  plot_layout(guides = "collect")
+
+rm(s3a, s3b, s3c, s3d, s3e, s3f)
+
+figure_S3
+
+
+```
+
+
+```{r, save_figure_S3, include = FALSE}
+
+ggsave("Figures/Supp_Figure_S3.pdf",
+       figure_S3,
+       height = 30,
+       width = 18,
+       units = "cm")
+
+ggsave("Figures/Supp_Figure_S3.png",
+       figure_S3,
+       height = 30,
+       width = 18,
+       units = "cm")
+
+```
+
+
+# End
+
+```{r get SessionInfo}
+
+sessionInfo()
+
+```
+
+

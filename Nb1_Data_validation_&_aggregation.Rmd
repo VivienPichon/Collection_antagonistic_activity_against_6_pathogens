@@ -35,9 +35,6 @@ turn_pct <- function(frac, total){
   round( 100*frac/total, 0)
 }
 
-SAVEPATH <- "../R_reports/"
-GETPATH <- "../Get_numbers_article"
-
 ```
 
 # 1_Import tables
@@ -61,7 +58,7 @@ tbl_score_nf <- tbl_score_nf |>
 
 ## Keep key numbers
 l_nonfil_collection_description <- list(
-    ## Total number of non-filamentous
+  ## Total number of non-filamentous
   total_nb_strains = n_distinct(tbl_score_nf$strain),
   ## Number of screened non-filamentous
   screened_strains_list = unique(tbl_score_nf$strain)
@@ -102,10 +99,28 @@ Import list of filamentous strains
 
 ```{r}
 
+## list columns to keep
+cols_to_keep <- c("strain", "Phylum", "Class", "Order", "Family", 
+                  "Genus", "Medium", "Cultivar","compartment")
+
 ## Import actino list
-tbl_actino_count <- read.csv( "data/0_fil_list_cleaned.csv") |> 
+tbl_actino_count <- read.csv( "data/0_fil_list_cleaned.csv") |>
+  mutate(Phylum = PHYLUM, Class = CLASS, Order = ORDER, 
+         Family = FAMILY, Genus = GENUS, Medium = MEDIUM,
+         Cultivar = recode_values(SAMPLE,
+                                  c("AS", "AR", "AL") ~ "Innovator",
+                                  c("BS", "BR", "BL") ~ "Bintje",
+                                  default = "error"
+                                  ),
+         compartment = recode_values(SAMPLE,
+                                  c("AS", "BS") ~ "Soil",
+                                  c("AR", "BR") ~ "Rhizosphere Soil",
+                                  c("AL", "BL") ~"Leaf",
+                                  default = "error"),
+         .keep = "unused"
+  ) |> 
   ## Select useful columns
-  select(strain, ORDER, GENUS, not_screened) |> 
+  select(cols_to_keep, not_screened) |> 
   ## Replace NAs with 0s
   replace_na(list(not_screened = 0))
 
@@ -121,6 +136,47 @@ l_filamentous_collection_description <- list(
   screened_strains_list = tbl_actino_count |> filter(not_screened == 0) |> pull(strain),
   ## number of failed 
   failed_strains_list = tbl_actino_count |> filter(not_screened == 1) |> pull(strain)
+)
+
+```
+
+
+## 1.3 Compile collection descriptive numbers
+
+```{r}
+
+## Create table of all strains
+table_all_strains <- tbl_score_nf |>
+  ## Keep every distinct non-filamentous strain
+  distinct(across(all_of(cols_to_keep))) |> 
+  mutate(type = "nf") |> 
+  bind_rows( 
+    ## 
+    tbl_actino_count |> 
+      select(cols_to_keep) |> 
+      mutate(type = "fil")
+  )
+
+
+## Create number-storing list
+l_all_collection_description <- list(
+  ## Total number of strains
+  total_nb_strains = nrow(table_all_strains),
+  ## per cultivar, number of isolates and genera
+  isolates_per_cultivar = summarise(table_all_strains, n = n(), .by = Cultivar),
+  genera_per_cultivar = summarise(table_all_strains, n = n_distinct(Genus), .by = Cultivar),
+  ## per compartment, number of isolates and genera
+  isolates_per_compartment = summarise(table_all_strains, n = n(), .by = compartment),
+  genera_per_compartment = summarise(table_all_strains, n = n_distinct(Genus), .by = compartment),
+  ## per growth medium, number of isolates and genera
+  isolates_per_medium = summarise(table_all_strains, n = n(), .by = Medium),
+  genera_per_medium = summarise(table_all_strains, n = n_distinct(Medium), .by = compartment),
+  ## Per Phylum, number of isolates and percentage of the collection
+  isolates_per_phylum = summarise(table_all_strains, n = n(), .by = Phylum),
+  prct_per_phylum = summarise(table_all_strains, n = n(), .by = Phylum) |> mutate(n = turn_pct(n, nrow(table_all_strains))),
+  ## Percentage of the collection per strain type (filamentous, non-fil)
+  prct_per_type = summarise(table_all_strains, n = n(), .by = type) |> mutate(n = turn_pct(n, nrow(table_all_strains)))
+  
 )
 
 ```
@@ -213,23 +269,30 @@ describe_table(tbl_valid_nf)
 
 # Report data validation numbers
 l_nonfil_data_validation <- list(
+  ## Number of strains successfully screened
+  nb_strains_screened = n_distinct(tbl_valid_nf$strain),
+  ## Number of genera successfully screened
+  nb_strains_genera = n_distinct(tbl_valid_nf$Genus),
   ## Number of strains with low number of replicates
   nb_invalid_less_than_10 = list_bad_strains |> length(),
   ## Number of duels with a single replicate
   nb_duel_with_one_replicate = list_bad_comb_nf |> nrow(),
+  ## Number of strains with 2 replicates and a score difference >1
+  nb_duels_highdiff = nrow(tbl_high_diff_fil),
   ## Add number of screened strains
   nb_strains_screened = tbl_valid_nf$strain |> n_distinct(), 
   ## Number of genera that the screened strains belong to
   nb_strains_genera = tbl_valid_nf$Genus |> n_distinct(),
   ## Total number of possible duels
-  #nb_possible_duels = l_filamentous_collection_description$filamentous_total * 6,
+  nb_possible_duels = l_nonfil_collection_description$total_nb_strains * 6,
   ## Actual number of duels
-  nb_actual_duels = tbl_valid_nf |> count(strain, patho_factor) |> nrow()#,
+  nb_actual_duels = tbl_valid_nf |> count(strain, patho_factor) |> nrow(),
   ## Percentage of successfully assessed duels
-  # pct_duels_assessed = turn_pct(
-  #   l_nonfil_data_validation$nb_actual_duels, l_nonfil_data_validation$nb_possible_duels)
+  pct_duels_assessed = turn_pct(
+    tbl_valid_nf |> count(strain, patho_factor) |> nrow(), 
+    l_nonfil_collection_description$total_nb_strains * 6
+    )
   )
-
 
 ```
 
@@ -351,9 +414,12 @@ cat( nrow(list_bad_comb_fil) + nrow(tbl_high_diff_fil), "combinations were remov
 # Report data validation numbers
 l_filamentous_data_validation <- list(
   ## Number of strains with low number of replicates
-  nb_invalid_less_than_10 = list_bad_strains_fil |> length(),
+  nb_invalid_less_than_10 = (list_bad_strains_fil |> length()) + 
+    (tbl_actino_count |> filter(not_screened==1) |> nrow()),
   ## Number of duels with a single replicate
   nb_duel_with_one_replicate = list_bad_comb_fil |> nrow(),
+  ## Number of strains with 2 replicates and a score difference >1
+  nb_duels_highdiff = nrow(tbl_high_diff_fil),
   ## Add number of screened strains
   nb_strains_screened = tbl_valid_fil$strain |> n_distinct(), 
   ## Number of genera that the screened strains belong to
@@ -368,6 +434,8 @@ l_filamentous_data_validation <- list(
     (l_filamentous_collection_description$filamentous_total * 6))
   )
 
+
+nb_total_strains_not_screened <- (l_filamentous_collection_description$total_nb_strains - l_filamentous_data_validation$nb_strains_screened) + (l_nonfil_collection_description$total_nb_strains - l_nonfil_data_validation$nb_strains_screened)
 
 ```
 
