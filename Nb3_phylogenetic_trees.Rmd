@@ -1,0 +1,862 @@
+---
+title: "Nb3_phylogenetic_trees"
+author: "Vivien Pichon"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+
+library(tidyverse)   # Data manipulation
+library(reshape2)    # Data reshaping
+library(knitr)       # Get good tables
+library(kableExtra)  # Get good tables
+library(RColorBrewer)# Color palette
+library(patchwork)   # Pasting plots together
+library(ggtext)      # Allows the use of the markdown text format in ggplots
+library(ggtree)      # Build the phylogenetic trees
+library(ggtreeExtra) # Extra functionalities for ggtree
+library(pheatmap)    # Good heatmap package
+library(ggnewscale)  # Create new scales for ggplot
+library(geiger)      # Rescale the full phylogenetic tree
+
+knitr::opts_chunk$set(message = FALSE, 
+                      warning = FALSE,
+                      fig.align = 'center' )
+
+
+## Create reporting function
+describe_table <- function(df, name = deparse(substitute(df)), head = TRUE) {
+  cat(sprintf("The table '%s' contains %d rows and %d columns\n", name, nrow(df), ncol(df)))
+  if(head == TRUE){
+    head(df) |>
+      kable() |>
+      kable_styling()
+  }
+}
+
+# Simple rounded percentage function
+turn_pct <- function(frac, total){
+  round( 100*frac/total, 1)
+}
+
+```
+
+In this notebook we create phylogenetic trees of the collection, annotated with a heatmap that contains the activity level of each strain against each pathogen.
+Two figures, each containing two phylogenetic trees (non-filamentous, filamentous) will be created. 
+The first one contains all the strains but no strain labels (Figure 4). 
+The second one contains only the active strains, and has strain labels (Figure S4).
+
+# 0_Import data
+
+```{r import_aggregated_tables}
+
+## Import aggregated scores for non-filamentous strains
+tbl_agg_nf <- read.csv("data/1_data_aggregated_non_filamentous") |> 
+  ## Turn isolation factors and score category to factor
+  mutate(Medium = factor(Medium,
+                         levels = c("ARE", "TSA", "ActIA", "PDA")),
+         compartment = factor(compartment,
+                              levels = c("Leaf", "Root", "Rhizosphere soil")),
+         Cultivar = factor(Cultivar,
+                           levels = c("Bintje", "Innovator")),
+         median_categ = factor(median_categ, 
+                               levels = c("Outstanding", "High", "Medium", 
+                                          "Low", "Inactive")),
+         patho_factor = factor(patho_factor,
+                               levels = c("Dsol", "Pcar", "Asol", "Rsol",
+                                          "Pinf", "Pult"))
+         )
+
+## Import aggregated scores for non-filamentous strains
+tbl_agg_fil <- read.csv("data/1_data_aggregated_filamentous") |> 
+  ## Turn isolation factors and score category to factor
+  mutate(Medium = factor(Medium,
+                         levels = c("ARE", "TSA", "ActIA", "PDA")),
+         compartment = factor(compartment,
+                              levels = c("Leaf", "Root", "Rhizosphere soil")),
+         Cultivar = factor(Cultivar,
+                           levels = c("Bintje", "Innovator")),
+         median_categ = factor(median_categ, 
+                               levels = c("Outstanding", "High", "Medium", 
+                                          "Low", "Inactive")),
+         patho_factor = factor(patho_factor,
+                               levels = c("Dsol", "Pcar", "Asol", "Rsol",
+                                          "Pinf", "Pult"))
+         )
+
+
+## list columns to keep
+cols_to_keep <- c("strain", "Phylum", "Class", "Order", "Family", 
+                  "Genus", "Medium", "Cultivar","compartment")
+
+## Import full collection phylogenetic tree
+tree_full <- read.tree( "data/0_full_tree.nwk")
+
+## Import filamentous phylogenetic tree
+tree_fil <- read.tree( "data/0_filamentous_tree.nwk")
+
+
+```
+
+# 1_Big trees: Supporting objects
+
+## 1.1_Non-Filamentous
+
+### Info table
+
+```{r create_info_tab_big_tree_nf}
+
+## Create list of objects for the tree
+list_tree_big_nf <- list(all_strains = tbl_agg_nf$strain |> unique() |> sort())
+
+## attach the list
+attach(list_tree_big_nf)
+
+## Create info table for small tree
+# Import full table
+list_tree_big_nf <- list_tree_big_nf |> 
+  list_assign(info = tbl_agg_nf |>
+                # Keep only one row of each strain
+                distinct(across(all_of(cols_to_keep))) |>
+                # Select relevant phylogeny columns
+                select(cols_to_keep) |>
+                # Turn strain column to row names
+                column_to_rownames("strain")
+  )
+
+##Report
+describe_table(list_tree_big_nf$info)
+
+detach(list_tree_big_nf)
+
+```
+
+### Heatmap data frame
+
+```{r create_heatmaps_big_tree_nf}
+
+## Initiate results heatmap as a data frame
+mat_active_tmp <- tbl_agg_nf |>
+  ## code activity level into numbers
+  mutate(act_code = recode_values(median_categ,
+                                  "Inactive" ~ 0,
+                                  "Low" ~ 1,
+                                  "Medium" ~ 2,
+                                  "High" ~ 3,
+                                  "Outstanding" ~ 4)) |> 
+  ## Pivot table into matrix-type
+  pivot_wider(names_from = patho_factor,
+              id_cols = strain,
+              values_from = act_code) |> 
+  ## Create row names
+  column_to_rownames("strain") |> 
+  select("Dsol", "Pcar", "Asol", "Rsol", "Pinf", "Pult")
+
+## Add spaces in the column names for proper alignment on the circular phylogenetic tree
+colnames(mat_active_tmp) <- c("Dsol", "  Pcar", 
+                              "   Asol", "   Rsol", 
+                              "     Pinf", "       Pult")
+
+# # Convert all columns to factor, keeping consistent levels 0-4
+mat_active_tmp[] <- lapply(mat_active_tmp, 
+                           function(x) factor(x, levels = 0:4))
+
+## Add to the list
+list_tree_big_nf <- list_tree_big_nf |> 
+  list_assign(results_hm = mat_active_tmp)
+
+## Clean up temporary object
+rm(mat_active_tmp)
+
+## Report
+describe_table(list_tree_big_nf$results_hm)
+
+```
+
+### Taxalist
+
+```{r create_taxalist_big_tree_nf}
+
+## attach the list we work with
+attach(list_tree_big_nf)
+
+## Create empty taxalist object (branch coloring the trees)
+# Choose rank (Phylum, Order, Genus)
+rank = "Order"
+
+# Create empty object
+taxalist_tmp <- NULL
+
+
+# Fill objects as a list with vectors, all named "i" 
+for (i in unique( info[ , rank] )) {
+  taxalist_tmp <- c(taxalist_tmp, 
+                    list( i = rownames(info)[info[ , rank] == i]))
+}
+
+# Rename the vectors of the list after their taxon
+names(taxalist_tmp) <- unique(info[ , rank])
+
+## List taxa with no active strain
+other_taxa <- c( names(taxalist_tmp)[!(names(taxalist_tmp) %in%
+                                     (tbl_agg_nf |> filter(median != 0) |> pull(rank) |> unique() )
+                                      )],
+                 "Enterobacterales", "Brevibacillales")
+
+# Merge the contents of the other_taxa elements into one vector
+taxalist_tmp[["Other"]] <- unlist(taxalist_tmp[names(taxalist_tmp) %in% other_taxa])
+
+# Remove the original elements
+taxalist_tmp <- taxalist_tmp[!names(taxalist_tmp) %in% other_taxa]
+
+## Add the taxa list to the tree list
+list_tree_big_nf <- list_tree_big_nf |> 
+  list_assign(taxalist = taxalist_tmp)
+
+## Clean up temporary items
+rm(taxalist_tmp, other_taxa, rank, i)
+
+detach(list_tree_big_nf)
+
+```
+
+### Format tree
+
+```{r format_tree_big_nf}
+
+## Attach list
+attach(list_tree_big_nf)
+
+## Prune and recalculate the tree with the used strains only
+tree_tmp <- ape::keep.tip(
+  tree_full, 
+  rownames(results_hm)) |>
+  ## Root the tree on AR046
+  ape::root("AR046") |> 
+  ## Rescale tree
+  rescale( model = "delta", delta = 0.7)
+
+## Add the tree to the list
+list_tree_big_nf <- list_tree_big_nf |> 
+  list_assign(tree = tree_tmp)
+
+
+## Clean up temporary item
+rm(tree_tmp)
+detach(list_tree_big_nf)
+
+```
+
+## 1.2_Filamentous
+
+### Info table
+
+```{r create_info_tab_big_tree_fil}
+
+## Create list of objects for the tree
+list_tree_big_fil <- list(all_strains = tbl_agg_fil$strain |> unique() |> sort())
+
+## attach the list
+attach(list_tree_big_fil)
+
+## Create info table for small tree
+# Import full table
+list_tree_big_fil <- list_tree_big_fil |> 
+  list_assign(info = tbl_agg_fil |>
+                # Keep only one row of each strain
+                distinct(across(all_of(cols_to_keep))) |>
+                # Select relevant phylogeny columns
+                select(cols_to_keep) |>
+                # Turn strain column to row names
+                column_to_rownames("strain")
+  )
+
+##Report
+describe_table(list_tree_big_fil$info)
+
+detach(list_tree_big_fil)
+
+```
+
+### Heatmap data frame
+
+```{r create_heatmaps_big_tree_fil}
+
+## Initiate results heatmap as a data frame
+mat_active_tmp <- tbl_agg_fil |>
+  ## code activity level into numbers
+  mutate(act_code = recode_values(median_categ,
+                                  "Inactive" ~ 0,
+                                  "Low" ~ 1,
+                                  "Medium" ~ 2,
+                                  "High" ~ 3,
+                                  "Outstanding" ~ 4)) |> 
+  ## Pivot table into matrix-type
+  pivot_wider(names_from = patho_factor,
+              id_cols = strain,
+              values_from = act_code) |> 
+  ## Create row names
+  column_to_rownames("strain") |> 
+  select("Dsol", "Pcar", "Asol", "Rsol", "Pinf", "Pult")
+
+## Add spaces in the column names for proper alignment on the circular phylogenetic tree
+colnames(mat_active_tmp) <- c("Dsol", "  Pcar", 
+                              "   Asol", "   Rsol", 
+                              "     Pinf", "       Pult")
+
+# # Convert all columns to factor, keeping consistent levels 0-4
+mat_active_tmp[] <- lapply(mat_active_tmp, 
+                           function(x) factor(x, levels = 0:4))
+
+## Add to the list
+list_tree_big_fil <- list_tree_big_fil |> 
+  list_assign(results_hm = mat_active_tmp)
+
+## Clean up temporary object
+rm(mat_active_tmp)
+
+## Report
+describe_table(list_tree_big_fil$results_hm)
+
+```
+
+### Taxalist
+
+```{r create_taxalist_big_tree_fil}
+
+## attach the list we work with
+attach(list_tree_big_fil)
+
+## Create empty taxalist object (branch coloring the trees)
+# Choose rank (Phylum, Order, Genus)
+rank = "Genus"
+
+# Create empty object
+taxalist_tmp <- NULL
+
+
+# Fill objects as a list with vectors, all named "i" 
+for (i in unique( info[ , rank] )) {
+  taxalist_tmp <- c(taxalist_tmp, 
+                    list( i = rownames(info)[info[ , rank] == i]))
+}
+
+# Rename the vectors of the list after their taxon
+names(taxalist_tmp) <- unique(info[ , rank])
+
+
+## Add the taxa list to the tree list
+list_tree_big_fil <- list_tree_big_fil |> 
+  list_assign(taxalist = taxalist_tmp)
+
+## Clean up temporary items
+rm(taxalist_tmp, other_taxa, rank, i)
+
+detach(list_tree_big_fil)
+
+```
+
+### Format tree
+
+```{r format_tree_big_fil}
+
+## Attach list
+attach(list_tree_big_fil)
+
+## Prune and recalculate the tree with the used strains only
+tree_tmp <- ape::keep.tip(
+  tree_fil, 
+  rownames(results_hm)) |>
+  ## Root the tree on AR046
+  ape::root("BR162", resolve.root = TRUE) |> 
+  ## Rescale tree
+  rescale( model = "delta", delta = 0.7)
+
+## Add the tree to the list
+list_tree_big_fil <- list_tree_big_fil |> 
+  list_assign(tree = tree_tmp)
+
+
+## Clean up temporary item
+rm(tree_tmp)
+detach(list_tree_big_fil)
+
+```
+
+# 2_Big trees: Contruction
+
+## 2.1_Non-filamentous *Figure4a*
+
+```{r plot_big_tree_nf, fig.align='left', fig.height=15, fig.width=19}
+
+## Attach list
+attach(list_tree_big_nf)
+
+p <- ggtree(tree,
+            ladderize = TRUE,
+            linewidth = .7,
+            layout = "fan",
+            open.angle = 10) %<+% info +
+  # Add metadata and tiplabs
+  geom_tiplab(size = 0, 
+              align = TRUE, 
+              linesize = 0.2,
+              linetype = "solid",
+              alpha = .3,
+              show.legend = FALSE) +
+  labs(tag = "a")+
+  theme(legend.title = element_text(size = 10),
+        plot.title = element_text(margin = margin(b = 2, unit = "mm"),
+                                  vjust = -10),
+        legend.text = element_text(size = 9),
+        plot.margin = margin(-20, -20, 0, -20, "pt"),
+        plot.tag.position = c(0.05, 0.90))
+
+## Color the branches
+name_order <- c("Corynebacteriales",  "Micrococcales", 
+                "Bacillales", 
+                "Caulobacterales", "Rhizobiales", 
+                "Sphingobacteriales", "Pseudomonadales", "Burkholderiales", "Xanthomonadales",
+                "Other")
+
+q = groupOTU(p, taxalist, "Order") +
+  aes(color = Order) +
+  scale_color_manual( breaks = names(taxalist)[
+    match(name_order, names(taxalist))],
+    values = c(
+      "limegreen", "olivedrab3",  
+      "steelblue1", 
+      "purple1", "royalblue2",
+      "goldenrod1",
+      "violetred", "hotpink1","deeppink2",
+      "grey", "black" ))
+
+
+## Add categorical results heatmap to base tree
+figure_4a <- gheatmap(q,
+                      results_hm,
+                      offset = 0,
+                      width = 0.5,
+                      color = "white",
+                      colnames_angle = 55,
+                      font.size = 1.6,
+                      colnames_offset_y = 369,
+                      colnames_offset_x = -0.03
+) +
+  scale_fill_manual(
+    values = c("0" = "grey95",
+               "1" = brewer.pal(11, "RdGy")[5],
+               "2" = brewer.pal(11, "RdGy")[4],
+               "3" = brewer.pal(11, "RdGy")[3],
+               "4" = brewer.pal(11, "RdGy")[2]),
+    labels = c("Inactive",
+               "Low",
+               "Medium",
+               "High",
+               "Outstanding"),
+    na.value = "white",
+    name = "Activity") + 
+  hexpand(0.1, direction = 1)
+
+
+## Clean up
+rm(p, q, name_order)
+detach(list_tree_big_nf)
+
+print(figure_4a)
+
+```
+
+## 2.2_Filamentous *Figure4b*
+
+```{r plot_big_tree_fil, fig.align='left', fig.height=15, fig.width=19}
+
+## Attach list
+attach(list_tree_big_fil)
+
+p <- ggtree(tree,
+            ladderize = TRUE,
+            linewidth = .7,
+            layout = "fan",
+            open.angle = 10) %<+% info +
+  # Add metadata and tiplabs
+  geom_tiplab(size = 0,
+              align = TRUE,
+              linesize = .2,
+              linetype = "solid",
+              alpha = 1,
+              show.legend = FALSE) +
+  labs(tag = "b")+
+  theme(legend.title = element_text(size = 10),
+        plot.title = element_text(margin = margin(b = 2, unit = "mm"),
+                                  vjust = -10),
+        legend.text = element_text(size = 9),
+        plot.margin = margin(-20, -20, -20, -20, "pt"),
+        plot.tag.position = c(0.05, 0.90)) + 
+  hexpand(0.1, direction = 1)
+
+q <- groupOTU(p, taxalist, "Genus") +
+  aes(color = Genus) +
+  scale_color_manual( breaks = names(taxalist)[match(c("Streptomyces", "Nocardioides", "Nocardia"), names(taxalist))],
+                      values = c("limegreen", "steelblue1",
+                                 "goldenrod1", "grey", "black"))
+
+
+## Add categorical results heatmap to base tree
+figure_4b <- gheatmap(q,
+              results_hm,
+              offset = 0.0,
+              width = 0.5,
+              color = "white",
+              colnames_angle = 50,
+              font.size = 1.6,
+              colnames_offset_y = 205.5,
+              colnames_offset_x = -0.006
+) +
+  scale_fill_manual(
+    values = c("0" = "grey95",
+               "1" = brewer.pal(11, "RdGy")[5],
+               "2" = brewer.pal(11, "RdGy")[4],
+               "3" = brewer.pal(11, "RdGy")[3],
+               "4" = brewer.pal(11, "RdGy")[2]),
+    labels = c("Inactive",
+               "Low",
+               "Medium",
+               "High",
+               "Outstanding"),
+    na.value = "white",
+    name = "Activity") + 
+  hexpand(0.1, direction = 1)
+
+
+## Clean up
+rm(p, q, name_order)
+detach(list_tree_big_fil)
+
+print(figure_4b)
+
+```
+
+
+## Assemble *Figure 4*
+
+```{r, create_figure_4}
+
+## Extract each legend individually, suppressing the other guide when doing so
+legend_color1 <- get_legend(figure_4a + theme(legend.position = "right") + guides(fill = "none"))
+legend_fill   <- get_legend(figure_4a + theme(legend.position = "right") + guides(color = "none"))
+legend_color2 <- get_legend(figure_4b + theme(legend.position = "right") + guides(fill = "none"))
+
+## Remove all legends from the tree plots themselves
+figure_4a <- figure_4a + theme(legend.position = "none")
+figure_4b <- figure_4b + theme(legend.position = "none")
+
+## Stack the three legends in the desired order
+legends_stacked <- wrap_plots(
+  legend_color1, legend_fill, legend_color2,
+  ncol = 1
+)
+
+figure_pre4 <- (wrap_elements(full = figure_4a) / wrap_elements(full = figure_4b)) +
+  plot_layout(heights = c(1.1, 1))
+
+figure_4 <- (figure_pre4 | legends_stacked) +
+  plot_layout(widths = c(1, 0.35))
+
+figure_4
+
+``` 
+
+```{r save_figure_4, include = FALSE}
+
+ggsave("Figures/Figure_4.pdf",
+       figure_4,
+       height = 20,
+       width = 17,
+       units = "cm")
+
+ggsave("Figures/Figure_4.png",
+       figure_4,
+       height = 20,
+       width = 17,
+       units = "cm")
+
+```
+
+
+# 3_Small trees: Supporting objects
+
+The small trees are the labelled phylogenetic trees with only the active strains.
+Like for the big trees, we start with creating the supporting files, and then construct the trees.
+
+## 3.1_Non-filamentous
+
+```{r small_tree_nf_supporting_objects}
+
+attach(list_tree_big_nf)
+
+list_active_strains = tbl_agg_nf |> filter(median_categ != "Inactive") |> pull(strain) |> unique() |> sort()
+
+list_tree_small_nf <- list(
+  ## Subset info
+  info = info[list_active_strains,],
+  results_hm = results_hm[list_active_strains,],
+  tree =  
+    ## Keep only active strains
+    ape::keep.tip(tree_full, 
+                  list_active_strains) |>
+    ## Root the tree on AS109
+    ape::root("AS109") |>
+    ## Rescale tree
+    rescale( model = "delta", delta = 0.7),
+  taxalist = taxalist |> 
+    lapply(function(x) x[x %in% list_active_strains]) %>% ## Use %>% because it supports the "." placeholder
+    Filter(function(x) length(x) > 0, .) 
+  
+)
+
+rm(list_active_strains)
+
+detach(list_tree_big_nf)
+
+```
+
+## 3.2_Filamentous
+
+```{r small_tree_fil_supporting_objects}
+
+attach(list_tree_big_fil)
+
+list_active_strains = tbl_agg_fil |> filter(median_categ != "Inactive") |> pull(strain) |> unique() |> sort()
+
+list_tree_small_fil <- list(
+  ## Subset info
+  info = info[list_active_strains,],
+  results_hm = results_hm[list_active_strains,],
+  tree =  
+    ## Keep only active strains
+    ape::keep.tip(tree_fil, 
+                  list_active_strains) |>
+    ## Root the tree on BR162
+    ape::root("BR162") |>
+    ## Rescale tree
+    rescale( model = "delta", delta = 0.7),
+  taxalist = taxalist |> 
+    lapply(function(x) x[x %in% list_active_strains]) %>% ## Use %>% because it supports the "." placeholder
+    Filter(function(x) length(x) > 0, .) 
+  
+)
+
+rm(list_active_strains)
+
+detach(list_tree_big_fil)
+
+```
+
+# 4_Small trees: Construct
+ 
+## Non-filamentous *Figure S4a*
+
+```{r plot_small_tree_nf, fig.align='left', fig.height=15, fig.width=19}
+
+## Attach list
+attach(list_tree_small_nf)
+
+p <- ggtree(tree,
+            ladderize = TRUE,
+            linewidth = .7,
+            layout = "fan",
+            open.angle = 10) %<+% info +
+  # Add metadata and tiplabs
+  geom_tiplab(size = 2, 
+              align = TRUE, 
+              linesize = 0.2,
+              linetype = "solid",
+              alpha = 1,
+              show.legend = FALSE) +
+  labs(tag = "a")+
+  theme(legend.title = element_text(size = 10),
+        plot.title = element_text(margin = margin(b = 2, unit = "mm"),
+                                  vjust = -10),
+        legend.text = element_text(size = 9),
+        plot.margin = margin(-20, -20, 0, -20, "pt"),
+        plot.tag.position = c(0.05, 0.90))
+
+## Order of the taxa in the legend
+name_order <- c("Corynebacteriales",  "Micrococcales",
+                "Bacillales",
+                "Caulobacterales", "Rhizobiales",
+                "Sphingobacteriales", "Pseudomonadales", "Burkholderiales", "Xanthomonadales" )
+
+q = groupOTU(p, taxalist, "Order") +
+  aes(color = Order) +
+  scale_color_manual( breaks = names(taxalist)[
+    match(name_order, names(taxalist))],
+    values = c(
+      Corynebacteriales = "limegreen", 
+      Micrococcales = "olivedrab3",  
+      Bacillales = "steelblue1", 
+      Caulobacterales = "purple1",
+      Rhizobiales = "royalblue2",
+      Sphingobacteriales = "goldenrod1",
+      Pseudomonadales = "violetred", 
+      Burkholderiales = "hotpink1",
+      Xanthomonadales = "deeppink2" ))
+
+
+## Add categorical results heatmap to base tree
+figure_S4a <- gheatmap(q,
+                      results_hm,
+                      offset = .22,
+                      width = 0.5,
+                      color = "white",
+                      colnames_angle = 55,
+                      font.size = 1.6,
+                      colnames_offset_y = 95,
+                      colnames_offset_x = -0.03
+) +
+  scale_fill_manual(
+    values = c("0" = "grey95",
+               "1" = brewer.pal(11, "RdGy")[5],
+               "2" = brewer.pal(11, "RdGy")[4],
+               "3" = brewer.pal(11, "RdGy")[3],
+               "4" = brewer.pal(11, "RdGy")[2]),
+    labels = c("Inactive",
+               "Low",
+               "Medium",
+               "High",
+               "Outstanding"),
+    na.value = "white",
+    name = "Activity")
+
+
+## Clean up
+rm(p, q, name_order)
+detach(list_tree_small_nf)
+
+print(figure_S4a)
+
+```
+
+## Filamentous *Figure S4b*
+
+```{r plot_small_tree_fil, fig.align='left', fig.height=10, fig.width=14}
+
+## Attach list
+attach(list_tree_small_fil)
+
+p <- ggtree(tree,
+            ladderize = TRUE,
+            linewidth = .7,
+            layout = "fan",
+            open.angle = 10) %<+% info +
+  # Add metadata and tiplabs
+  geom_tiplab(size = 1.5, 
+              align = TRUE, 
+              linesize = 0.2,
+              linetype = "solid",
+              alpha = 1,
+              show.legend = FALSE) +
+  labs(tag = "b")+
+  theme(legend.title = element_text(size = 10),
+        plot.title = element_text(margin = margin(b = 2, unit = "mm"),
+                                  vjust = -10),
+        legend.text = element_text(size = 9),
+        plot.margin = margin(-20, -20, 0, -20, "pt"),
+        plot.tag.position = c(0.05, 0.90))
+
+
+q <- groupOTU(p, taxalist, "Genus") +
+  aes(color = Genus) +
+  scale_color_manual( breaks = names(taxalist)[match(c("Streptomyces", "Nocardioides", "Nocardia"),
+                                                     names(taxalist))],
+                      values = c(Streptomyces = "limegreen", 
+                                 Nocardioides = "steelblue1",
+                                 Nocardia = "goldenrod1" ))
+
+
+## Add categorical results heatmap to base tree
+figure_S4b <- gheatmap(q,
+                      results_hm,
+                      offset = .04,
+                      width = 0.4,
+                      color = "white",
+                      colnames_angle = 55,
+                      font.size = 1.6,
+                      colnames_offset_y = 120,
+                      colnames_offset_x = -0.01
+) +
+  scale_fill_manual(
+    values = c("0" = "grey95",
+               "1" = brewer.pal(11, "RdGy")[5],
+               "2" = brewer.pal(11, "RdGy")[4],
+               "3" = brewer.pal(11, "RdGy")[3],
+               "4" = brewer.pal(11, "RdGy")[2]),
+    labels = c("Inactive",
+               "Low",
+               "Medium",
+               "High",
+               "Outstanding"),
+    na.value = "white",
+    name = "Activity")
+
+
+## Clean up
+rm(p, q, name_order)
+detach(list_tree_small_fil)
+
+print(figure_S4b)
+
+```
+
+## Assemble *Figure S4*
+
+```{r, create_figure_S4}
+
+## Extract each legend individually, suppressing the other guide when doing so
+legend_color1 <- cowplot::get_legend(figure_S4a + theme(legend.position = "right") + guides(fill = "none"))
+legend_fill   <- cowplot::get_legend(figure_S4a + theme(legend.position = "right") + guides(color = "none"))
+legend_color2 <- cowplot::get_legend(figure_S4b + theme(legend.position = "right") + guides(fill = "none"))
+
+## Remove all legends from the tree plots themselves
+figure_S4a <- figure_S4a + theme(legend.position = "none")
+figure_S4b <- figure_S4b + theme(legend.position = "none")
+
+## Stack the three legends in the desired order
+legends_stacked <- wrap_plots(
+  legend_color1, legend_fill, legend_color2,
+  ncol = 1
+)
+
+figure_preS4 <- (wrap_elements(full = figure_S4a) / wrap_elements(full = figure_S4b)) +
+  plot_layout(heights = c(1.1, 1))
+
+figure_S4 <- (figure_preS4 | legends_stacked) +
+  plot_layout(widths = c(1, 0.35))
+
+rm(figure_preS4)
+
+figure_S4
+
+
+``` 
+
+
+```{r save_figure_S4, include = FALSE}
+
+ggsave("Figures/Supp_Figure_S4.pdf",
+       figure_S4,
+       height = 20,
+       width = 17,
+       units = "cm")
+
+ggsave("Figures/Supp_Figure_S4.png",
+       figure_S4,
+       height = 20,
+       width = 17,
+       units = "cm")
+
+```

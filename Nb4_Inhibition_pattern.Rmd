@@ -1,0 +1,460 @@
+---
+title: "Nb4_Inhibition_Profile"
+author: "Vivien Pichon"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+
+library(tidyverse)   # Data manipulation
+library(reshape2)    # Data reshaping
+library(knitr)       # Get good tables
+library(kableExtra)  # Get good tables
+library(ggnewscale)  # Create new scales for ggplot
+library(ggtext)      # Allows the use of the markdown text format in ggplots
+library(patchwork)   # Make composite plots
+
+
+knitr::opts_chunk$set(message = FALSE, 
+                      warning = FALSE,
+                      fig.align = 'center' )
+
+
+## Create reporting function
+describe_table <- function(df, name = deparse(substitute(df)), head = TRUE) {
+  cat(sprintf("The table '%s' contains %d rows and %d columns\n", name, nrow(df), ncol(df)))
+  if(head == TRUE){
+    head(df) |>
+      kable() |>
+      kable_styling()
+  }
+}
+
+# Simple rounded percentage function
+turn_pct <- function(frac, total){
+  round( 100*frac/total, 1)
+}
+
+```
+
+# 1_Import data
+
+```{r import_aggregated_tables}
+
+## Import aggregated scores for non-filamentous strains
+tbl_agg_nf <- read.csv("data/1_data_aggregated_non_filamentous") |> 
+  ## Turn isolation factors and score category to factor
+  mutate(Medium = factor(Medium,
+                         levels = c("ARE", "TSA", "ActIA", "PDA")),
+         compartment = factor(compartment,
+                              levels = c("Leaf", "Root", "Rhizosphere soil")),
+         Cultivar = factor(Cultivar,
+                           levels = c("Bintje", "Innovator")),
+         median_categ = factor(median_categ, 
+                               levels = c("Outstanding", "High", "Medium", 
+                                          "Low", "Inactive")),
+         patho_factor = factor(patho_factor,
+                               levels = c("Dsol", "Pcar", "Asol", "Rsol",
+                                          "Pinf", "Pult"))
+         )
+
+## Import aggregated scores for non-filamentous strains
+tbl_agg_fil <- read.csv("data/1_data_aggregated_filamentous") |> 
+  ## Turn isolation factors and score category to factor
+  mutate(Medium = factor(Medium,
+                         levels = c("ARE", "TSA", "ActIA", "PDA")),
+         compartment = factor(compartment,
+                              levels = c("Leaf", "Root", "Rhizosphere soil")),
+         Cultivar = factor(Cultivar,
+                           levels = c("Bintje", "Innovator")),
+         median_categ = factor(median_categ, 
+                               levels = c("Outstanding", "High", "Medium", 
+                                          "Low", "Inactive")),
+         patho_factor = factor(patho_factor,
+                               levels = c("Dsol", "Pcar", "Asol", "Rsol",
+                                          "Pinf", "Pult"))
+         )
+
+## Merge filamentous and non-filamentous tables
+tbl_agg_all <- tbl_agg_nf |> 
+  # Add a strain type column
+  mutate(type = "nf") |>
+  # Bind the filamentous aggregated table
+  bind_rows( tbl_agg_fil |> mutate(type = "fil")) |> 
+  # Turn the type into a factor
+  mutate(type = factor(type,
+                       levels = c("nf", "fil")),
+         ## add an boolean to separate active from inactive strains
+         active_yn = median_categ != "Inactive" )
+
+```
+
+
+# 2_Create supporting data for Figure 5
+
+## For *Figure 5a*
+### Tables
+
+```{r}
+
+## Create table of the the proportion of active strains per order
+tbl_prct_activity_yn <- tbl_agg_all |>
+  ## Summarise table per pathogen and Order
+  summarise(
+    # Number of strains tested
+    n = n(),
+    # Number of active strains
+    tot_active = sum(active_yn),
+    # percentage of active strains
+    pct_active = turn_pct(tot_active, n),
+    .by = c(patho_factor, Order)
+  ) |>
+  # Order results
+  arrange(patho_factor, Order)
+  
+
+## Select the relevant Orders: At least 10 strains and 15 percent of active strains against 1 pathogen
+relevant_orders <- tbl_prct_activity_yn |> 
+  filter(n >= 10,
+         pct_active >= 15) |> 
+  pull(Order) |> 
+  unique()
+
+
+## Filter the Order-summarizing table
+tbl_prct_activity_yn_filtered <- tbl_prct_activity_yn |> 
+  filter(Order %in% relevant_orders) |> 
+  ## Turn the orders into a factor
+  mutate(Order = factor(Order,
+                        levels = c("Streptomycetales", "Micrococcales", 
+                                   "Propionibacteriales", "Bacillales", 
+                                   "Pseudomonadales", "Sphingobacteriales",  
+                                   "Rhizobiales"))
+         )
+
+
+```
+
+
+### Labellers
+
+```{r labels_figure_5}
+
+## Create named object linking the Order to the number of strains
+list_n_orders <- setNames( tbl_prct_activity_yn_filtered$n[1:7], tbl_prct_activity_yn_filtered$Order[1:7])
+
+## Create markdown-formatted labels of the number of strains per Order
+taxon_n2 <- c(
+  Rhizobiales = paste0( 
+    "Rhizobiales<span style='color: transparent;'>qwertzui</span><br><span style='font-size:8pt'>n=",
+    list_n_orders[["Rhizobiales"]] , 
+    "</span>") ,
+  
+  Sphingobacteriales = paste0(
+    "Sphingobacteriales<br><span style='font-size:8pt'>n=",
+    list_n_orders[["Sphingobacteriales"]] , 
+    "</span>" ),
+  
+  Pseudomonadales = paste0(
+    "Pseudomonadales<br><span style='font-size:8pt'>n=", 
+    list_n_orders[["Pseudomonadales"]] , 
+    "</span>"),
+  
+  Bacillales = paste0(
+    "Bacillales<span style='color: transparent;'>qwertzuiop</span><br><span style='font-size:8pt'>n=",
+    list_n_orders[["Bacillales"]] , 
+    "</span>"),
+  
+  Propionibacteriales = paste0(
+    "Propionibacteriales<br><span style='font-size:8pt'>n=", 
+    list_n_orders[["Propionibacteriales"]] , 
+    "</span>"),
+  
+  Micrococcales = paste0(
+    "Micrococcales<span style='color: transparent;'>qwertz</span><br><span style='font-size:8pt'>n=",
+    list_n_orders[["Micrococcales"]] , 
+    "</span>"),
+  
+  Streptomycetales = paste0(
+    "Streptomycetales<br><span style='font-size:8pt'>n=", 
+    list_n_orders[["Streptomycetales"]] , 
+    "</span>")
+)
+
+## Create order color labels 
+order_colors <- c(
+  Bacillales = "steelblue1",
+  Sphingobacteriales = "goldenrod1",
+  Streptomycetales = "limegreen",
+  Propionibacteriales = "lightseagreen",
+  Pseudomonadales = "violetred",
+  Micrococcales = "olivedrab3",
+  Rhizobiales = "mediumorchid1",
+  Other = "grey"
+)
+
+# ## Define second order colors, with darker grey for Other
+# order_colors2 <- c(
+#   Bacillales = "steelblue1",
+#   Sphingobacteriales = "goldenrod1",
+#   Streptomycetales = "limegreen",
+#   Propionibacteriales = "lightseagreen",
+#   Pseudomonadales = "violetred",
+#   Micrococcales = "olivedrab3",
+#   Rhizobiales = "mediumorchid1",
+#   Other = "grey"
+# )
+
+
+``` 
+
+## For *Figure 5b*
+
+### Tables
+
+```{r create_tables_figure4b}
+
+## Create table of the Order composition of active strain per pathogen
+
+tbl_prct_activity_taxa <- tbl_agg_all |>
+  ## Calculate number of active strains per pathogen
+  mutate(tot_active = sum(active_yn),
+         .by = patho_factor,
+         ## Place all minor orders into an "Other" category
+         Order = if_else(Order %in% relevant_orders, Order, "Other"),
+         ## Turn orders into a factor
+         Order = factor(Order,
+                        levels = c("Other", "Rhizobiales", "Sphingobacteriales",  
+                                   "Pseudomonadales", "Bacillales",
+                                   "Propionibacteriales", "Micrococcales", 
+                                   "Streptomycetales")),
+         ## Reverse factor levels
+         patho_factor = factor(patho_factor,
+                               levels = levels(patho_factor)[6:1])
+         )|>
+  ## Summarize data per pathogen and Order
+  summarise(
+    ## Number of active strains per pathogen and Order
+    taxon_active = sum(active_yn),
+    ## Number of active strains per pathogen
+    tot_active = first(tot_active),
+    ## Proportion of active strains of each Order out of the total number of strains per pathogen
+    pct_active = turn_pct(taxon_active, tot_active),
+    .by = c(patho_factor, Order)
+  ) |> 
+  ## Order rows
+  arrange(patho_factor, Order)
+
+
+```
+
+### Labels
+
+```{r pathogen_labels}
+
+## Create vector of the number of 
+list_n_patho <- setNames(tbl_prct_activity_taxa |> filter( Order == "Bacillales") |> pull(tot_active), 
+                         tbl_prct_activity_taxa |> filter( Order == "Bacillales") |> pull(patho_factor))
+
+## Create markdown-formatted labels of the number of strains per Order
+patho_labels <- c(
+  Dsol = paste0( 
+    "Dsol<br><span style='font-size:8pt'>n_active=",
+    list_n_patho[["Dsol"]] , 
+    "</span>" ) ,
+  
+  Pcar = paste0(
+    "Pcar<br><span style='font-size:8pt'>n_active=",
+    list_n_patho[["Pcar"]] , 
+    "</span>" ),
+  
+  Asol = paste0(
+    "Asol<br><span style='font-size:8pt'>n_active=", 
+    list_n_patho[["Asol"]] , 
+    "</span>"),
+  
+  Rsol = paste0(
+    "Rsol<br><span style='font-size:8pt'>n_active=",
+    list_n_patho[["Rsol"]] , 
+    "</span>"),
+  
+  Pinf = paste0(
+    "Pinf<br><span style='font-size:8pt'>n_active=", 
+    list_n_patho[["Pinf"]] , 
+    "</span>"),
+  
+  Pult = paste0(
+    "Pult<br><span style='font-size:8pt'>n_active=",
+    list_n_patho[["Pult"]] , 
+    "</span>")
+)
+
+```
+
+# 3_*Figure 5a*: Activity prevalence of each order
+
+```{r plot_figure_5a}
+
+## Call ggplot
+figure_5a <- ggplot(tbl_prct_activity_yn_filtered,
+                    aes(x=pct_active, y = patho_factor)) +
+  # Add horizontal columns filled with grey
+  geom_col(aes(x = 100), fill = "grey95")+
+  ## Add new fill scale
+  new_scale_fill()+
+  ## Add colored bars for the proportion of active strains
+  geom_col( aes(fill = Order)) +
+  scale_fill_manual(values = order_colors, 
+                    guide = "none") +
+  scale_x_continuous(limits = c(0,100),
+                     breaks = 50)+
+  labs(tag = "a",
+       x = "", y = "")+
+  facet_grid(rows = vars(patho_factor), cols = vars(Order),
+             scales = "free_y", switch = "y",
+             labeller = labeller(Order = taxon_n2))+
+  theme(
+    line = element_line(colour = "black", linewidth = 0.5, 
+                        linetype = 1, lineend = "butt"),
+    rect = element_rect(fill = "white", colour = "black", 
+                        linewidth = 0.5, linetype = 1),
+    axis.ticks = element_blank(),
+    axis.line = element_blank(),
+    legend.background = element_blank(),
+    legend.key = element_blank(),
+    panel.background = element_blank(),
+    panel.border = element_blank(),
+    strip.background = element_blank(),
+    plot.background = element_blank(),
+    
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(colour = "grey92"),
+    strip.text.x = element_markdown(angle = 35, hjust = 0,
+                                    margin = margin(t = 0, r = 0, 
+                                                    b = -21, l = 65)
+    ),
+    strip.text.y.left = element_markdown(angle = 0, hjust = 1),
+    strip.clip = "off",
+    axis.text.y = element_blank(),
+    axis.text.x = element_blank(),
+    plot.tag.position = c(0.1, 1.05),
+    plot.margin = margin(t = 15, r = 10, b = 5.5, 
+                         l = -30, unit = "pt"))
+
+figure_5a
+
+```
+
+# 4_*Figure 5b*: Composition of active strains per pathogen
+
+```{r plot_figure_5b}
+## Create a stacked barplot plot based on it
+
+figure_5b <- ggplot(tbl_prct_activity_taxa, 
+                      aes(y = patho_factor, x = pct_active, fill = Order)) +
+  geom_col( color = "grey95" ) +
+  scale_fill_manual(values = order_colors) +
+  scale_y_discrete(labels = patho_labels)+
+  labs(tag = "b",
+  y = "", x = "Proportion of active strains") +
+  theme(
+  # theme_minimal() elements
+  line = element_line(colour = "black", linewidth = 0.5, linetype = 1, lineend = "butt"),
+  rect = element_rect(fill = "white", colour = "black", linewidth = 0.5, linetype = 1),
+  axis.ticks = element_blank(),
+  axis.line = element_blank(),
+  legend.background = element_blank(),
+  legend.key = element_blank(),
+  panel.background = element_blank(),
+  panel.border = element_blank(),
+  panel.grid.major.y = element_blank(),
+  panel.grid.major.x = element_line(colour = "grey92"),
+  strip.background = element_blank(),
+  plot.background = element_blank(),
+  plot.tag.position = c(0.1, 1.05),
+  
+  # Personalized elements
+  panel.grid.minor = element_blank(),       
+  # remove minor grid lines
+  #axis.text.x = element_markdown(angle = 45, hjust = 1, vjust = 1)
+  axis.text.y = element_markdown(),
+  plot.margin = margin(t = 5.5, r = 10, b = 5.5, l = -30, unit = "pt")
+  )
+
+figure_5b
+
+```
+## 5_ Assemble *Figure 5*
+
+```{r, create_figure_5}
+
+figure_5 <- (figure_5a/free(figure_5b + guides(fill = guide_legend(reverse = TRUE)), type = "label")) +
+   plot_layout(guides = "collect") &
+   theme(legend.position = "bottom",
+         plot.margin = margin(t=12,, l = -20, r = 20, "pt"))
+
+figure_5
+
+```
+
+
+```{r save_figure_5}
+
+ggsave("Figures/Figure_5.pdf",
+       figure_5,
+       height = 17,
+       width = 20,
+       units = "cm")
+
+ggsave("Figures/Figure_5.png",
+       figure_5,
+       height = 20,
+       width = 17,
+       units = "cm")
+
+```
+
+
+#5_Assemble descriptive numbers
+
+```{r descriptive_tables}
+
+## Create the list
+l_inhibition_profiles <- list(
+  ## Table of order activity prevalence per pathogen
+  order_activity_prevalence = tbl_prct_activity_yn_filtered |> 
+    pivot_wider(values_from = pct_active,
+                names_from = patho_factor,
+                id_cols = Order),
+  
+  ## Table of activity composition of each strain in percentage
+  active_strain_composition_pct = tbl_prct_activity_taxa |> 
+    pivot_wider(values_from = pct_active,
+                names_from = Order,
+                id_cols = patho_factor),
+  
+  ## Table of activity composition of each strain in counts
+  active_strain_composition_count = tbl_prct_activity_taxa |> 
+    pivot_wider(values_from = taxon_active,
+                names_from = Order,
+                id_cols = patho_factor),
+  
+  ## Number of strains antagonistic to each pathogen
+  nb_antagonistic_strain_per_pathogen <- list_n_patho
+)
+
+```
+
+# End
+
+```{r SessionInfo}
+
+sessionInfo()
+
+```
+
+
+

@@ -149,11 +149,14 @@ l_filamentous_collection_description <- list(
 table_all_strains <- tbl_score_nf |>
   ## Keep every distinct non-filamentous strain
   distinct(across(all_of(cols_to_keep))) |> 
+  ## Create variable for the type of strain
   mutate(type = "nf") |> 
+  ## bind the filamentous table
   bind_rows( 
-    ## 
     tbl_actino_count |> 
+      ## Select relevant columns
       select(cols_to_keep) |> 
+      ## Create variable for the type of strain
       mutate(type = "fil")
   )
 
@@ -278,7 +281,7 @@ l_nonfil_data_validation <- list(
   ## Number of duels with a single replicate
   nb_duel_with_one_replicate = list_bad_comb_nf |> nrow(),
   ## Number of strains with 2 replicates and a score difference >1
-  nb_duels_highdiff = nrow(tbl_high_diff_fil),
+  nb_duels_highdiff = nrow(tbl_high_diff),
   ## Add number of screened strains
   nb_strains_screened = tbl_valid_nf$strain |> n_distinct(), 
   ## Number of genera that the screened strains belong to

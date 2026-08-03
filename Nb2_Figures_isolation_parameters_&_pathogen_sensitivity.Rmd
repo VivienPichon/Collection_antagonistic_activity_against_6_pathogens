@@ -35,7 +35,7 @@ describe_table <- function(df, name = deparse(substitute(df)), head = TRUE) {
 
 # Simple rounded percentage function
 turn_pct <- function(frac, total){
-  round( 100*frac/total, 0)
+  round( 100*frac/total, 1)
 }
 
 ```
@@ -373,7 +373,9 @@ ggsave("../Figures/Figure_2.png",
 ```
 
 
-# 3_*Figure S2*
+# 3_Influence of isolation parameters per pathogen
+
+## *Figure S2*
 
 Here, we create plots showing the influence of the isolation factor on the distribution of the activity, but this time for each pathogen separately.
 
@@ -485,7 +487,9 @@ ggsave("Figures/Supp_Figure_S2.png",
 ```
 
 
-# *Figure 3*
+# 4_Pathogen sensitivity to infection
+
+## *Figure 3*
 
 ```{r, plot_figure, 3}
 
@@ -553,7 +557,8 @@ ggsave("Figures/Figure_3.png",
 
 ```
 
-# *Figure S3*
+# 5_Taxonomy of active strains
+## *Figure S3*
 
 ```{r function_figure_S3}
 
@@ -644,6 +649,104 @@ ggsave("Figures/Supp_Figure_S3.png",
        height = 30,
        width = 18,
        units = "cm")
+
+```
+
+
+# 6_Key data collection
+
+## Isolation parameters
+
+
+```{r}
+attach(l_max_activity)
+
+## List non-filamentous strains
+l_isolation_parameters_nf <- list(
+  ## Proportion of active strains 
+  prop_active_strains = turn_pct( (tbl_nf$max_act!="Inactive") |> sum(), tbl_nf |> nrow()),
+  ## Proportion active strains per cultivar
+  prop_active_strains_per_cultivar = tbl_nf |> 
+    summarise(pct_active = turn_pct(sum(max_act!="Inactive"), n()),
+              .by = Cultivar),
+  ## Proportion active strains per compartment
+  prop_active_strains_per_compartment = tbl_nf |> 
+    summarise(pct_active = turn_pct(sum(max_act!="Inactive"), n()),
+              .by = compartment),
+  ## Proportion active strains per growth medium
+  prop_active_strains_per_medium = tbl_nf |> 
+    summarise(pct_active = turn_pct(sum(max_act!="Inactive"), n()),
+              .by = Medium)
+)
+
+
+### List for filamentous strains
+l_isolation_parameters_fil <- list(
+  ## Proportion of active strains 
+  prop_active_strains = turn_pct( (tbl_fil$max_act!="Inactive") |> sum(), tbl_fil |> nrow()),
+  ## Proportion active strains per cultivar
+  prop_active_strains_per_cultivar = tbl_fil |> 
+    summarise(pct_active = turn_pct(sum(max_act!="Inactive"), n()),
+              .by = Cultivar),
+  ## Proportion active strains per compartment
+  prop_active_strains_per_compartment = tbl_fil |> 
+    summarise(pct_active = turn_pct(sum(max_act!="Inactive"), n()),
+              .by = compartment),
+  ## Proportion active strains per growth medium
+  prop_active_strains_per_medium = tbl_fil |> 
+    summarise( pct_active = turn_pct( sum( max_act != "Inactive"), n()),
+              .by = Medium)
+)
+
+
+detach(l_max_activity)
+
+```
+
+## Pathogen sensitivity
+
+```{r}
+
+## List non-filamentous
+l_patho_sensitivity_nf <- list(
+  ## Number and percentage of active strains per pathogen
+  active_strains_per_pathogen = tbl_agg_nf |> 
+    summarise(count_active = sum( median_categ != "Inactive" ),
+              pct_active = turn_pct( sum( median_categ != "Inactive" ), n() ),
+              .by = patho_factor ) |> 
+    arrange(patho_factor),
+  
+  ## Number and percentage of strains per pathogen for each activity level
+  activity_levels_per_pathogen = tbl_agg_nf |> 
+    mutate(n_strain = n_distinct(strain),
+           .by = patho_factor) |> 
+    summarise(count = n(),
+              pct = turn_pct( n(), first(n_strain)),
+              .by = c(patho_factor, median_categ)) |> 
+    arrange(patho_factor, median_categ)
+)
+
+
+## List filamentous
+l_patho_sensitivity_fil <- list(
+  ## Number and percentage of active strains per pathogen
+  active_strains_per_pathogen = tbl_agg_fil |> 
+    summarise(count_active = sum(median_categ!="Inactive"),
+              pct_active = turn_pct(sum(median_categ!="Inactive"), n()),
+              .by = patho_factor) |> 
+    arrange(patho_factor),
+  
+  ## Number and percentage of strains per pathogen for each activity level
+  activity_levels_per_pathogen = tbl_agg_fil |> 
+    mutate(n_strain = n_distinct(strain),
+           .by = patho_factor) |> 
+    summarise(count = n(),
+              pct = turn_pct( n(), first(n_strain)),
+              .by = c(patho_factor, median_categ))|> 
+    arrange(patho_factor, median_categ)
+  
+)
+
 
 ```
 
