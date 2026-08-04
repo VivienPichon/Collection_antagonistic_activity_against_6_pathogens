@@ -21,6 +21,7 @@ library(ggtreeExtra) # Extra functionalities for ggtree
 library(pheatmap)    # Good heatmap package
 library(ggnewscale)  # Create new scales for ggplot
 library(geiger)      # Rescale the full phylogenetic tree
+library(cowplot)     # Make composite plots
 
 knitr::opts_chunk$set(message = FALSE, 
                       warning = FALSE,
@@ -671,7 +672,7 @@ p <- ggtree(tree,
             layout = "fan",
             open.angle = 10) %<+% info +
   # Add metadata and tiplabs
-  geom_tiplab(size = 2, 
+  geom_tiplab(size = 1.8, 
               align = TRUE, 
               linesize = 0.2,
               linetype = "solid",
@@ -781,12 +782,12 @@ q <- groupOTU(p, taxalist, "Genus") +
 ## Add categorical results heatmap to base tree
 figure_S4b <- gheatmap(q,
                       results_hm,
-                      offset = .04,
-                      width = 0.4,
+                      offset = .035,
+                      width = 0.42,
                       color = "white",
                       colnames_angle = 55,
                       font.size = 1.6,
-                      colnames_offset_y = 120,
+                      colnames_offset_y = 149.5,
                       colnames_offset_x = -0.01
 ) +
   scale_fill_manual(
@@ -832,15 +833,15 @@ legends_stacked <- wrap_plots(
 )
 
 figure_preS4 <- (wrap_elements(full = figure_S4a) / wrap_elements(full = figure_S4b)) +
-  plot_layout(heights = c(1.1, 1))
+  plot_layout(heights = c(1, 1.1))
 
 figure_S4 <- (figure_preS4 | legends_stacked) +
   plot_layout(widths = c(1, 0.35))
 
+
 rm(figure_preS4)
 
 figure_S4
-
 
 ``` 
 
@@ -860,3 +861,13 @@ ggsave("Figures/Supp_Figure_S4.png",
        units = "cm")
 
 ```
+
+# End
+
+```{r sessionInfo}
+
+sessionInfo()
+
+```
+
+

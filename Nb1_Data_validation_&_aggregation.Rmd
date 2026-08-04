@@ -338,7 +338,7 @@ describe_table(tbl_agg_nf)
 ```
 
 
-```{r save_nonfil_aggregated_data, eval=FALSE}
+```{r save_nonfil_aggregated_data}
 
 write.csv(tbl_agg_nf, "data/1_data_aggregated_non_filamentous",
           row.names = FALSE)
@@ -480,7 +480,7 @@ describe_table(tbl_agg_fil)
 
 ```
 
-```{r save_fil_aggregated_data, eval=FALSE}
+```{r save_fil_aggregated_data}
 
 write.csv(tbl_agg_fil, "data/1_data_aggregated_filamentous",
           row.names = FALSE)

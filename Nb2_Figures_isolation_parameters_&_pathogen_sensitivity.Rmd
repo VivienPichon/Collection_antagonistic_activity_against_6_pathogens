@@ -357,14 +357,14 @@ figure_2
 
 ```
 
-```{r, save_figure_2, eval = FALSE}
-# ggsave("../Figures/Figure_2.pdf", 
-#        figure_2,
-#        height = 14,
-#        width = 21,
-#        units = "cm")
+```{r, save_figure_2, include = FALSE}
+ggsave("Figures/Figure_2.pdf",
+       figure_2,
+       height = 14,
+       width = 21,
+       units = "cm")
 
-ggsave("../Figures/Figure_2.png", 
+ggsave("Figures/Figure_2.png", 
        figure_2,
        height = 14,
        width = 21,
@@ -467,7 +467,7 @@ figure_S2
 
 ```
 
-```{r save_figure_S2, eval = FALSE}
+```{r save_figure_S2, include = FALSE}
 
 ## Save as pdf
 ggsave("Figures/Supp_Figure_S2.pdf",
