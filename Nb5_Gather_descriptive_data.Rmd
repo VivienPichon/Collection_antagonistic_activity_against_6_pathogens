@@ -1,0 +1,49 @@
+---
+title: "Nb5_descriptive_data"
+author: "Vivien Pichon"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+
+library(tidyverse)   # Data manipulation
+library(reshape2)    # Data reshaping
+library(knitr)       # Get good tables
+library(kableExtra)  # Get good tables
+
+
+knitr::opts_chunk$set(message = FALSE, 
+                      warning = FALSE,
+                      fig.align = 'center' )
+
+
+## Create reporting function
+describe_table <- function(df, name = deparse(substitute(df)), head = TRUE) {
+  cat(sprintf("The table '%s' contains %d rows and %d columns\n", name, nrow(df), ncol(df)))
+  if(head == TRUE){
+    head(df) |>
+      kable() |>
+      kable_styling()
+  }
+}
+
+# Simple rounded percentage function
+turn_pct <- function(frac, total){
+  round( 100*frac/total, 0)
+}
+
+```
+
+# Import data
+
+```{r import_data}
+
+load("descriptive_data/data_Nb1.RData")
+load("descriptive_data/data_Nb2.RData")
+load("descriptive_data/data_Nb4.RData")
+
+```

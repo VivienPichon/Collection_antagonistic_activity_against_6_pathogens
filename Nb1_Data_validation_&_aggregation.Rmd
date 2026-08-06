@@ -113,8 +113,8 @@ tbl_actino_count <- read.csv( "data/0_fil_list_cleaned.csv") |>
                                   default = "error"
                                   ),
          compartment = recode_values(SAMPLE,
-                                  c("AS", "BS") ~ "Soil",
-                                  c("AR", "BR") ~ "Rhizosphere Soil",
+                                  c("AS", "BS") ~ "Rhizosphere soil",
+                                  c("AR", "BR") ~ "Root",
                                   c("AL", "BL") ~"Leaf",
                                   default = "error"),
          .keep = "unused"
@@ -165,20 +165,42 @@ table_all_strains <- tbl_score_nf |>
 l_all_collection_description <- list(
   ## Total number of strains
   total_nb_strains = nrow(table_all_strains),
+  ## Total number of genera
+  total_nb_genera = n_distinct(table_all_strains$Genus),
   ## per cultivar, number of isolates and genera
-  isolates_per_cultivar = summarise(table_all_strains, n = n(), .by = Cultivar),
-  genera_per_cultivar = summarise(table_all_strains, n = n_distinct(Genus), .by = Cultivar),
+  isolates_per_cultivar = summarise(table_all_strains, 
+                                    n = n(), 
+                                    .by = Cultivar),
+  genera_per_cultivar = summarise(table_all_strains, 
+                                  n = n_distinct(Genus), 
+                                  .by = Cultivar),
   ## per compartment, number of isolates and genera
-  isolates_per_compartment = summarise(table_all_strains, n = n(), .by = compartment),
-  genera_per_compartment = summarise(table_all_strains, n = n_distinct(Genus), .by = compartment),
+  isolates_per_compartment = summarise(table_all_strains, 
+                                       n = n(), 
+                                       .by = compartment),
+  genera_per_compartment = summarise(table_all_strains, 
+                                     n = n_distinct(Genus), 
+                                     .by = compartment),
   ## per growth medium, number of isolates and genera
-  isolates_per_medium = summarise(table_all_strains, n = n(), .by = Medium),
-  genera_per_medium = summarise(table_all_strains, n = n_distinct(Medium), .by = compartment),
+  isolates_per_medium = summarise(table_all_strains, 
+                                  n = n(), 
+                                  .by = Medium),
+  genera_per_medium = summarise(table_all_strains, 
+                                n = n_distinct(Medium), 
+                                .by = compartment),
   ## Per Phylum, number of isolates and percentage of the collection
-  isolates_per_phylum = summarise(table_all_strains, n = n(), .by = Phylum),
-  prct_per_phylum = summarise(table_all_strains, n = n(), .by = Phylum) |> mutate(n = turn_pct(n, nrow(table_all_strains))),
+  isolates_per_phylum = summarise(table_all_strains, 
+                                  n = n(), 
+                                  .by = Phylum),
+  prct_per_phylum = summarise(table_all_strains, 
+                              n = n(), 
+                              .by = Phylum) |> 
+    mutate(n = turn_pct(n, nrow(table_all_strains))),
   ## Percentage of the collection per strain type (filamentous, non-fil)
-  prct_per_type = summarise(table_all_strains, n = n(), .by = type) |> mutate(n = turn_pct(n, nrow(table_all_strains)))
+  prct_per_type = summarise(table_all_strains, 
+                            n = n(), 
+                            .by = type) |> 
+    mutate(n = turn_pct(n, nrow(table_all_strains)))
   
 )
 
@@ -428,13 +450,13 @@ l_filamentous_data_validation <- list(
   ## Number of genera that the screened strains belong to
   nb_strains_genera = tbl_valid_fil$Genus |> n_distinct(),
   ## Total number of possible duels
-  nb_possible_duels = l_filamentous_collection_description$filamentous_total * 6,
+  nb_possible_duels = l_filamentous_collection_description$total_nb_strains * 6,
   ## Actual number of duels
   nb_actual_duels = tbl_valid_fil |> count(strain, patho_factor) |> nrow(),
   ## Percentage of successfully assessed duels
   pct_duels_assessed = turn_pct(
     (tbl_valid_fil |> count(strain, patho_factor) |> nrow()), 
-    (l_filamentous_collection_description$filamentous_total * 6))
+    (l_filamentous_collection_description$total_nb_strains * 6))
   )
 
 
@@ -484,6 +506,20 @@ describe_table(tbl_agg_fil)
 
 write.csv(tbl_agg_fil, "data/1_data_aggregated_filamentous",
           row.names = FALSE)
+
+```
+
+# 4_Export descriptive data
+
+```{r export_descriptive_data}
+
+save(file = "descriptive_data/data_Nb1.RData",
+     l_all_collection_description,
+     l_filamentous_collection_description,
+     l_filamentous_data_validation,
+     l_nonfil_collection_description,
+     l_nonfil_data_validation,
+     nb_total_strains_not_screened)
 
 ```
 

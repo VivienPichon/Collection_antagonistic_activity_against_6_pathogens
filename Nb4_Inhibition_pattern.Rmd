@@ -418,7 +418,7 @@ ggsave("Figures/Figure_5.png",
 ```
 
 
-# 6_Assemble descriptive numbers
+# 6_Assemble and export descriptive numbers
 
 ```{r descriptive_tables}
 
@@ -447,6 +447,14 @@ l_inhibition_profiles <- list(
 )
 
 ```
+
+```{r save_descriptive_numbers}
+
+save(file = "descriptive_data/data_Nb4.RData",
+     l_inhibition_profiles)
+
+```
+
 
 # End
 

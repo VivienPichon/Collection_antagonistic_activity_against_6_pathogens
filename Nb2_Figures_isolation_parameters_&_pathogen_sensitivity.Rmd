@@ -676,7 +676,43 @@ l_isolation_parameters_nf <- list(
   ## Proportion active strains per growth medium
   prop_active_strains_per_medium = tbl_nf |> 
     summarise(pct_active = turn_pct(sum(max_act!="Inactive"), n()),
-              .by = Medium)
+              .by = Medium),
+  ## Activity levels per cultivar
+  activity_levels_per_medium = tbl_nf |> 
+    mutate(n_patho = n(),
+           .by = Cultivar) |> 
+    summarise(activity_prop = turn_pct( n(), first(n_patho)),
+              .by = c(Cultivar, max_act)) |> 
+    arrange(Cultivar) |> 
+    pivot_wider(names_from = Cultivar,
+                values_from = activity_prop,
+                id_cols = max_act,
+                values_fill = 0) |> 
+    arrange(max_act),
+  ## Activity levels per compartment
+  activity_levels_per_compartment = tbl_nf |> 
+    mutate(n_patho = n(),
+           .by = compartment) |> 
+    summarise(activity_prop = turn_pct( n(), first(n_patho)),
+              .by = c(compartment, max_act)) |> 
+    arrange(compartment) |> 
+    pivot_wider(names_from = compartment,
+                values_from = activity_prop,
+                id_cols = max_act,
+                values_fill = 0) |> 
+    arrange(max_act),
+  ## Activity levels per medium
+  activity_levels_per_medium = tbl_nf |> 
+    mutate(n_patho = n(),
+           .by = Medium) |> 
+    summarise(activity_prop = turn_pct( n(), first(n_patho)),
+              .by = c(Medium, max_act)) |> 
+    arrange(Medium) |> 
+    pivot_wider(names_from = Medium,
+                values_from = activity_prop,
+                id_cols = max_act,
+                values_fill = 0) |> 
+    arrange(max_act)
 )
 
 
@@ -688,14 +724,50 @@ l_isolation_parameters_fil <- list(
   prop_active_strains_per_cultivar = tbl_fil |> 
     summarise(pct_active = turn_pct(sum(max_act!="Inactive"), n()),
               .by = Cultivar),
+  ## Activity levels per cultivar
+  activity_levels_per_medium = tbl_fil |> 
+    mutate(n_patho = n(),
+           .by = Cultivar) |> 
+    summarise(activity_prop = turn_pct( n(), first(n_patho)),
+              .by = c(Cultivar, max_act)) |> 
+    arrange(Cultivar) |> 
+    pivot_wider(names_from = Cultivar,
+                values_from = activity_prop,
+                id_cols = max_act,
+                values_fill = 0) |> 
+    arrange(max_act),
   ## Proportion active strains per compartment
   prop_active_strains_per_compartment = tbl_fil |> 
     summarise(pct_active = turn_pct(sum(max_act!="Inactive"), n()),
               .by = compartment),
+  ## Activity levels per compartment
+  activity_levels_per_compartment = tbl_fil |> 
+    mutate(n_patho = n(),
+           .by = compartment) |> 
+    summarise(activity_prop = turn_pct( n(), first(n_patho)),
+              .by = c(compartment, max_act)) |> 
+    arrange(compartment) |> 
+    pivot_wider(names_from = compartment,
+                values_from = activity_prop,
+                id_cols = max_act,
+                values_fill = 0) |> 
+    arrange(max_act),
   ## Proportion active strains per growth medium
   prop_active_strains_per_medium = tbl_fil |> 
     summarise( pct_active = turn_pct( sum( max_act != "Inactive"), n()),
-              .by = Medium)
+              .by = Medium),
+  ## Activity levels per medium
+  activity_levels_per_medium = tbl_fil |> 
+    mutate(n_patho = n(),
+           .by = Medium) |> 
+    summarise(activity_prop = turn_pct( n(), first(n_patho)),
+              .by = c(Medium, max_act)) |> 
+    arrange(Medium) |> 
+    pivot_wider(names_from = Medium,
+                values_from = activity_prop,
+                id_cols = max_act,
+                values_fill = 0) |> 
+    arrange(max_act)
 )
 
 
@@ -747,6 +819,19 @@ l_patho_sensitivity_fil <- list(
   
 )
 
+
+```
+
+# Export descriptive data
+
+```{r}
+
+save(file = "descriptive_data/data_Nb2.RData",
+  l_patho_sensitivity_fil,
+  l_patho_sensitivity_nf,
+  l_isolation_parameters_fil,
+  l_isolation_parameters_nf
+     )
 
 ```
 

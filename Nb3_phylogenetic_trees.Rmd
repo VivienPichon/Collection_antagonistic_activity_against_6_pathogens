@@ -473,7 +473,7 @@ print(figure_4a)
 
 ## 2.2_Filamentous *Figure4b*
 
-```{r plot_big_tree_fil, fig.align='left', fig.height=15, fig.width=19}
+```{r plot_fig4b, fig.align='left', fig.height=15, fig.width=19}
 
 ## Attach list
 attach(list_tree_big_fil)
@@ -587,6 +587,92 @@ ggsave("Figures/Figure_4.png",
 
 ```
 
+
+## 2.3_Figure 4b for a poster
+
+```{r plot_fig4b_fil_poster}
+
+attach(list_tree_big_fil)
+
+#Add a scale factor for all scalable elements
+scale_factor <- 2
+
+p <- ggtree(tree,
+            ladderize = TRUE,
+            linewidth = 1 * scale_factor * 0.4,
+            layout = "fan",
+            open.angle = 10) %<+% info +
+  geom_tiplab(size = 0,
+              align = TRUE,
+              linesize = .2 * scale_factor * 0.4,
+              linetype = "solid",
+              alpha = 1,
+              show.legend = FALSE) + 
+  theme(legend.title = element_text(size = 10 * scale_factor),
+        legend.text   = element_text(size = 9 * scale_factor),
+        plot.tag      = element_text(size = 14 * scale_factor, face = "bold"),
+        plot.title    = element_text(margin = margin(b = 2, unit = "mm"),
+                                      vjust = -10),
+        plot.margin   = margin(0, 0, 0, 0, "pt"),
+        legend.key.size = unit(scale_factor * 4, "mm"),
+        plot.tag.position = c(0.05, 0.90)) +
+  hexpand(0.1, direction = 1)
+
+q <- groupOTU(p, taxalist, "Genus") +
+  aes(color = Genus) +
+  scale_color_manual(breaks = names(taxalist)[match(c("Streptomyces", "Nocardioides", "Nocardia"), names(taxalist))],
+                      values = c("limegreen", "steelblue1",
+                                 "goldenrod1", "grey", "black"))
+
+## Add categorical results heatmap to base tree
+figure_4b_poster <- gheatmap(q,
+              results_hm,
+              offset = 0.0,
+              width = 0.5,
+              color = "white",
+              colnames_angle = 50,
+              font.size = 1.6 * scale_factor,
+              colnames_offset_y = 206,
+              colnames_offset_x = -0.006
+) +
+  scale_fill_manual(
+    values = c("0" = "grey95",
+               "1" = brewer.pal(11, "RdGy")[5],
+               "2" = brewer.pal(11, "RdGy")[4],
+               "3" = brewer.pal(11, "RdGy")[3],
+               "4" = brewer.pal(11, "RdGy")[2]),
+    labels = c("Inactive", "Low", "Medium", "High", "Outstanding"),
+    na.value = "white",
+    name = "Activity") +
+  hexpand(0.1, direction = 1) +
+  theme(legend.title = element_text(size = 10 * scale_factor),
+        legend.text   = element_text(size = 9 * scale_factor))
+
+rm(p, q)
+detach(list_tree_big_fil)
+
+
+print(figure_4b_poster)
+
+```
+
+```{r save_figure_4b_poster, include = FALSE}
+
+ggsave("Figures/Figure_4b_poster.pdf",
+       figure_4b_poster,
+       height = 25,
+       width = 30,
+       units = "cm",
+       dpi = 600)
+
+ggsave("Figures/Figure_4b_poster.png",
+       figure_4b_poster,
+       height = 25,
+       width = 35,
+       units = "cm",
+       dpi = 600)
+
+```
 
 # 3_Small trees: Supporting objects
 
@@ -787,7 +873,7 @@ figure_S4b <- gheatmap(q,
                       color = "white",
                       colnames_angle = 55,
                       font.size = 1.6,
-                      colnames_offset_y = 149.5,
+                      colnames_offset_y = 152,
                       colnames_offset_x = -0.01
 ) +
   scale_fill_manual(

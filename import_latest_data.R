@@ -202,13 +202,7 @@ tbl_score_nf <- tbl_score_nf |>
                                   default = "error"
     ) |> ## Order the pathogens
       factor(levels = c("Dsol", "Pcar", "Asol",
-                        "Rsol", "Pinf", "Pult" )),
-    ## Adapt old scoring system to the new one
-    inhibition_score = case_when(
-      (patho_factor == "Asol" | patho_factor == "Rsol") & inhibition_score == 0 ~ 0,
-      (patho_factor == "Asol" | patho_factor == "Rsol") & inhibition_score %in% 1:3 ~ inhibition_score - 1,
-      .default = inhibition_score
-    )
+                        "Rsol", "Pinf", "Pult" ))
   )
 
 ## Add metadata
