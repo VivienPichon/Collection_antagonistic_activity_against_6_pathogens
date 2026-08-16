@@ -8,7 +8,7 @@ library(readxl)
 library(tidyverse)
 
 
-# Import full-collection phylogenetic tree
+# ------- Import full-collection phylogenetic tree -----------
 ## Check previous version
 if(file.exists("data/0_full_tree.nwk")){
   file.rename("data/0_full_tree.nwk", 
@@ -31,8 +31,10 @@ file.copy("../phylogenetic tree creation/actino_tree/actino_tree.nwk",
           "data/0_filamentous_tree.nwk")
 
 
-# Clean and import data from filamentous strains
-## Checks if a previous version of the data exists. If so, renames it.
+# ============ Clean and import data from filamentous strains ===============
+
+
+## --- Checks if a previous version of the data exists. If so, renames it. ---
 if(file.exists("data/0_actino_score_database_cleaned.csv")){
   file.rename("data/0_actino_score_database_cleaned.csv", 
               "data/99_old_actino_score_database.csv")
@@ -68,11 +70,11 @@ strains_new_names <- c("AR012", "AR031", "AR113", "AS041", "AS097", "AS104",
 
 
 
-# Import filamentous data
-tbl_score_old <- readxl::read_excel( "../actino_results_db.xlsx", 
+# --- Import filamentous data ----
+tbl_score_old <- readxl::read_excel( "../actino_results_db.xlsx",
                                      sheet = "score" )
 
-# import strain characeristics
+# import strain characteristics
 tbl_info <- readxl::read_excel( "../results_db.xlsx", 
                                 sheet = "strain_characteristics" ) |> 
   mutate(compartment = replace_values(compartment, "Rhizospheric soil" ~ "Rhizosphere soil"),
@@ -133,7 +135,7 @@ write.csv(tbl_info,
           "data/0_strain_metadata.csv",
           row.names = FALSE)
 
-# Import data from non-filamentous strains
+# =============== Import data from non-filamentous strains =================
 
 ## Checks if a previous version of the data exists. If so, renames it.
 if(file.exists("data/0_nonfilamentous_database_cleaned.csv")){

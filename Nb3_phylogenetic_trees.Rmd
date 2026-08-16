@@ -55,7 +55,7 @@ The second one contains only the active strains, and has strain labels (Figure S
 ```{r import_aggregated_tables}
 
 ## Import aggregated scores for non-filamentous strains
-tbl_agg_nf <- read.csv("data/1_data_aggregated_non_filamentous") |> 
+tbl_agg_nf <- read.csv("data/1_data_aggregated_non_filamentous.csv") |> 
   ## Turn isolation factors and score category to factor
   mutate(Medium = factor(Medium,
                          levels = c("ARE", "TSA", "ActIA", "PDA")),
@@ -72,7 +72,7 @@ tbl_agg_nf <- read.csv("data/1_data_aggregated_non_filamentous") |>
          )
 
 ## Import aggregated scores for non-filamentous strains
-tbl_agg_fil <- read.csv("data/1_data_aggregated_filamentous") |> 
+tbl_agg_fil <- read.csv("data/1_data_aggregated_filamentous.csv") |> 
   ## Turn isolation factors and score category to factor
   mutate(Medium = factor(Medium,
                          levels = c("ARE", "TSA", "ActIA", "PDA")),
@@ -333,7 +333,7 @@ attach(list_tree_big_fil)
 
 ## Create empty taxalist object (branch coloring the trees)
 # Choose rank (Phylum, Order, Genus)
-rank = "Genus"
+rank = "Order"
 
 # Create empty object
 taxalist_tmp <- NULL
@@ -387,7 +387,7 @@ detach(list_tree_big_fil)
 
 ```
 
-# 2_Big trees: Contruction
+# 2_Big trees: Construction
 
 ## 2.1_Non-filamentous *Figure4a*
 
@@ -501,7 +501,9 @@ p <- ggtree(tree,
 
 q <- groupOTU(p, taxalist, "Genus") +
   aes(color = Genus) +
-  scale_color_manual( breaks = names(taxalist)[match(c("Streptomyces", "Nocardioides", "Nocardia"), names(taxalist))],
+  scale_color_manual( breaks = names(taxalist)[match(c("Streptomycetales",
+                                                       "Propionibacteriales",
+                                                       "Corynebacteriales"), names(taxalist))],
                       values = c("limegreen", "steelblue1",
                                  "goldenrod1", "grey", "black"))
 
@@ -583,7 +585,8 @@ ggsave("Figures/Figure_4.png",
        figure_4,
        height = 20,
        width = 17,
-       units = "cm")
+       units = "cm",
+       dpi = 600)
 
 ```
 
@@ -858,23 +861,24 @@ p <- ggtree(tree,
 
 q <- groupOTU(p, taxalist, "Genus") +
   aes(color = Genus) +
-  scale_color_manual( breaks = names(taxalist)[match(c("Streptomyces", "Nocardioides", "Nocardia"),
-                                                     names(taxalist))],
-                      values = c(Streptomyces = "limegreen", 
-                                 Nocardioides = "steelblue1",
-                                 Nocardia = "goldenrod1" ))
+  scale_color_manual( breaks = names(taxalist)[match(c(
+    "Streptomycetales", "Propionibacteriales", "Corynebacteriales"),
+    names(taxalist))],
+    values = c(Streptomycetales = "limegreen", 
+               Propionibacteriales = "steelblue1",
+               Corynebacteriales = "goldenrod1" ))
 
 
 ## Add categorical results heatmap to base tree
 figure_S4b <- gheatmap(q,
-                      results_hm,
-                      offset = .035,
-                      width = 0.42,
-                      color = "white",
-                      colnames_angle = 55,
-                      font.size = 1.6,
-                      colnames_offset_y = 152,
-                      colnames_offset_x = -0.01
+                       results_hm,
+                       offset = .035,
+                       width = 0.42,
+                       color = "white",
+                       colnames_angle = 55,
+                       font.size = 1.6,
+                       colnames_offset_y = 152,
+                       colnames_offset_x = -0.01
 ) +
   scale_fill_manual(
     values = c("0" = "grey95",
@@ -944,7 +948,8 @@ ggsave("Figures/Supp_Figure_S4.png",
        figure_S4,
        height = 20,
        width = 17,
-       units = "cm")
+       units = "cm",
+       dpi = 600)
 
 ```
 

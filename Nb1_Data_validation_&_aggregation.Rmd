@@ -218,6 +218,7 @@ In this section, we:
 - remove the duels combination that are not reliable (only 1 valid replicate).
 - remove the duels which have 2 replicates and a score difference between replicates > 1.
 
+
 ```{r replicate_growth_validation_nf}
 
 ### List useful columns
@@ -240,6 +241,7 @@ tbl_valid_nf = tbl_score_nf |>
   select( c("inhibition_score",cols_to_keep) )
 
 ```
+
 
 After cleaning, the table has the following properties.
 
@@ -504,7 +506,7 @@ describe_table(tbl_agg_fil)
 
 ```{r save_fil_aggregated_data}
 
-write.csv(tbl_agg_fil, "data/1_data_aggregated_filamentous",
+write.csv(tbl_agg_fil, "data/1_data_aggregated_filamentous.csv",
           row.names = FALSE)
 
 ```
